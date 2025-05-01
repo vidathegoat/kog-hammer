@@ -1,8 +1,14 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from db import (
+    get_all_punishment_options,
+    get_user_points,
+    add_punishment,
+    get_user_stage,
+    get_catalog_punishment,
+)
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
-from db import add_punishment, get_user_points
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -10,92 +16,131 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-
 @bot.event
 async def on_ready():
-    print(f"🔨 🛡️ {bot.user} is now online and watching over the realm!")
+    print(f"🔨🛡️  {bot.user} is now online and watching over the realm!")
     try:
         synced = await bot.tree.sync()
-        print(f"⚔️ 🔁 Synced: {len(synced)} slash command ready for battle!")
+        print(f"⚔️🔁  Synced: {len(synced)} slash command ready for battle!")
     except Exception as e:
         print(f"⚠️  **Error** syncing commands: {e}")
 
+class PunishmentSelect(discord.ui.Select):
+    def __init__(self, punishments, username, ip):
+        # Get only unique reasons
+        unique_reasons = {}
+        for punishment in punishments:
+            if punishment['reason'] not in unique_reasons:
+                unique_reasons[punishment['reason']] = punishment
 
-@bot.tree.command(name="ban", description="Ban a user using a points-based system.")
-@app_commands.describe(
-    username="User to ban",
-    ip="User's IPv4",
-    reason="Reason for ban",
-    base_days="Base ban duration in days",
-    points="Points to assign"
-)
-async def ban(
-        interaction: discord.Interaction,
-        username: str,
-        ip: str,
-        reason: str,
-        base_days: int,
-        points: int
-):
-    await interaction.response.defer(ephemeral=True)
+        unique_punishments_list = list(unique_reasons.values())[:25]
+
+        MAX_VALUE_LENGTH = 100
+
+        options = []
+        for punishment in unique_punishments_list:
+            label = punishment['reason']
+            if len(label) > 50:
+                label = label[:47] + "..."
+
+            value = punishment['reason']
+            if len(value) > MAX_VALUE_LENGTH:
+                value = value[:MAX_VALUE_LENGTH]
+
+            options.append(
+                discord.SelectOption(
+                    label=label,
+                    value=value
+                )
+            )
+
+        super().__init__(placeholder="Choose a punishment reason", min_values=1, max_values=1, options=options)
+        self.username = username
+        self.ip = ip
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        selected_reason = self.values[0]
+        await process_ban(interaction, selected_reason, self.username, self.ip)
+
+        self.disabled = True
+        for child in self.view.children:
+            child.disabled = True
+        await interaction.message.edit(view=self.view)
+
+class PunishmentSelectView(discord.ui.View):
+    def __init__(self, punishments, username, ip):
+        super().__init__(timeout=None)
+        self.add_item(PunishmentSelect(punishments, username, ip))
+
+async def process_ban(interaction, reason, username, ip):
+    current_stage = get_user_stage(username, reason)
+    template = get_catalog_punishment(reason, current_stage)
+
+    if not template:
+        await interaction.followup.send(
+            f"⚠️ No template found for `{reason}` at stage {current_stage}.",
+            ephemeral=True
+        )
+        return
+
+    amount = template['amount']
+    points = template['points']
+    unit = template.get('unit', 'days').lower()
 
     current_points = get_user_points(username)
     total_points = current_points + points
-    multiplier = total_points / 2
-    if multiplier < 1:
-        multiplier = 1
-    final_duration = add_punishment(username, ip, reason, base_days, points, multiplier)
+    multiplier = max(total_points / 2, 1)
 
-    # Get the forum channel
+    unit_abbrev = {"minutes": "m", "hours": "h", "days": "d", "weeks": "w"}.get(unit, "d")
+    final_duration = f"{int(amount * multiplier)}{unit_abbrev}"
+
+    add_punishment(username, ip, reason, amount, points, multiplier)
+
     forum_channel = bot.get_channel(THREAD_CHANNEL_ID)
-
     if not isinstance(forum_channel, discord.ForumChannel):
-        print("Error: Forum channel not found or not a ForumChannel.")
+        print("❌ Forum channel not found or incorrect type.")
         return
 
-    # Format punishment message
-    thread_message = (
-        f"🔨  ### Ban Issued\n"
-        f"👤  **Username:** {username}\n"
-        f"🌐  **IP Address:** {ip}\n"
-        f"📝  **Reason:** `{reason}`\n"
-        f"📆  **Base:** {base_days} day | *Points: {points} (TOTAL: {total_points})*\n"
-        f"🔁  **Multiplier:** x{multiplier:.2f} →\n"
-        f"FINAL: **{final_duration} days**"
+    message = (
+        f"## Ban Issued to *{username}*\n"
+        f"**IP Address:** *{ip}*\n"
+        f"**Reason:** *{reason}*\n"
+        f"**Base:** *{amount} {unit}* | *Points: {points} (TOTAL: {total_points})*\n"
+        f"**Multiplier:** *x{multiplier:.2f} →*\n"
+        f"**FINAL:** *_{final_duration}_*"
     )
 
-    # Check for an existing thread with the user's name
-    existing_thread = discord.utils.get(forum_channel.threads, name=username)
-
-    if existing_thread:
-        thread = existing_thread
-        await thread.send(thread_message)
-        print(f"ℹ️ Existing thread found for {username}, message sent.")
+    thread = discord.utils.get(forum_channel.threads, name=username)
+    if thread:
+        await thread.send(message)
     else:
         thread = await forum_channel.create_thread(
             name=username,
-            content=thread_message,
+            content=message,
             auto_archive_duration=60,
             reason="Punishment issued"
         )
-        print(f"🧵 New thread created for {username}, message sent.")
 
-    # Send a ban command message to the admin bot
     admin_bot_channel = bot.get_channel(ADMIN_BOT_CHANNEL_ID)
     if admin_bot_channel:
-        ip_address = f"{ip}"
-        duration_str = f"{final_duration}d"
-        banip_command = f"$admin banip {ip_address} \"{username}\" \"{reason}\" {duration_str}"
-        await admin_bot_channel.send(banip_command)
-        print(f"📨 Sent banip command to admin bot: {banip_command}")
-    else:
-        print("⚠️ Could not find the admin bot channel.")
+        cmd = f"$admin banip {ip} \"{username}\" \"{reason}\" {final_duration}"
+        await admin_bot_channel.send(cmd)
+        print(f"📨 Sent banip command: {cmd}")
 
-    # Send ephemeral confirmation
     await interaction.followup.send(
-        f"**{username}** has been punished for **{final_duration} days** due to **{reason}**.",
+        f"`{username}` has been punished for *__{amount} {unit}__* due to *{reason}*.",
         ephemeral=True
     )
 
+@bot.tree.command(name="banip", description="Ban a user using a points-based system.")
+@app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
+async def banip(interaction: discord.Interaction, username: str, ip: str):
+    punishment_options = get_all_punishment_options()
+    if punishment_options:
+        view = PunishmentSelectView(punishment_options, username, ip)
+        await interaction.response.send_message("Please select a punishment template:", view=view)
+    else:
+        await interaction.response.send_message("No punishment templates found.", ephemeral=True)
 
 bot.run(DISCORD_TOKEN)
