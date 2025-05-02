@@ -62,7 +62,3 @@ def get_catalog_punishment(reason, stage):
     else:
         print(f"No matching catalog entry found for reason: '{reason}' and stage: {stage}")
         return None
-
-def get_user_offense_count(user_id):
-    response = supabase_client.from_('punishments').select('id').eq('user_id', user_id).execute()
-    return len(response.data)

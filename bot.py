@@ -1,4 +1,5 @@
 import discord
+from math import log2
 from discord.ext import commands
 from discord import app_commands
 from db import (
@@ -6,8 +7,7 @@ from db import (
     get_user_points,
     add_punishment,
     get_user_stage,
-    get_catalog_punishment,
-    get_user_offense_count
+    get_catalog_punishment
 )
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
@@ -94,7 +94,7 @@ async def process_ban(interaction, reason, username, ip):
 
     # Fetch current total points BEFORE adding this punishment
     current_points = get_user_points(username)
-    multiplier = max(current_points / 2, 1)
+    multiplier = max(log2(current_points + 1), 1)
 
     # Calculate final duration
     unit_abbrev = {"minutes": "m", "hours": "h", "days": "d", "weeks": "w"}.get(unit, "d")
@@ -115,6 +115,7 @@ async def process_ban(interaction, reason, username, ip):
         return
 
     moderator = interaction.user.mention
+    mod_name = interaction.user.display_name
 
     message = (
         f"## Ban Issued to *{username}*\n"
@@ -127,7 +128,7 @@ async def process_ban(interaction, reason, username, ip):
         
         f"**Final Duration:** `{final_duration_string}`\n\n"
 
-        f"**Issued By:** {moderator}"
+        f"**Issued By:** {moderator} ({mod_name})"
     )
 
     thread = discord.utils.get(forum_channel.threads, name=username)
