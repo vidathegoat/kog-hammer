@@ -7,6 +7,7 @@ from db import (
     add_punishment,
     get_user_stage,
     get_catalog_punishment,
+    get_user_offense_count
 )
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
@@ -74,12 +75,15 @@ class PunishmentSelectView(discord.ui.View):
         self.add_item(PunishmentSelect(punishments, username, ip))
 
 async def process_ban(interaction, reason, username, ip):
+    # Determine current stage and next stage
     current_stage = get_user_stage(username, reason)
-    template = get_catalog_punishment(reason, current_stage)
+    next_stage = current_stage  # stage already +1 in get_user_stage
 
+    # Fetch punishment template for the reason and stage
+    template = get_catalog_punishment(reason, next_stage)
     if not template:
         await interaction.followup.send(
-            f"⚠️ No template found for `{reason}` at stage {current_stage}.",
+            f"⚠️ No template found for `{reason}` at stage {next_stage}.",
             ephemeral=True
         )
         return
@@ -88,27 +92,42 @@ async def process_ban(interaction, reason, username, ip):
     points = template['points']
     unit = template.get('unit', 'days').lower()
 
+    # Fetch current total points BEFORE adding this punishment
     current_points = get_user_points(username)
-    total_points = current_points + points
-    multiplier = max(total_points / 2, 1)
+    multiplier = max(current_points / 2, 1)
 
+    # Calculate final duration
     unit_abbrev = {"minutes": "m", "hours": "h", "days": "d", "weeks": "w"}.get(unit, "d")
-    final_duration = f"{int(amount * multiplier)}{unit_abbrev}"
+    final_duration_value = int(amount * multiplier)
+    final_duration = f"{final_duration_value}{unit_abbrev}"
+    final_duration_string = f"{final_duration_value} {unit}"
 
+    # Add punishment record (AFTER calculating duration)
     add_punishment(username, ip, reason, amount, points, multiplier)
 
+    # Total points after adding this one (for display only)
+    total_points = current_points + points
+
+    # Send to forum thread
     forum_channel = bot.get_channel(THREAD_CHANNEL_ID)
     if not isinstance(forum_channel, discord.ForumChannel):
         print("❌ Forum channel not found or incorrect type.")
         return
 
+    moderator = interaction.user.mention
+
     message = (
         f"## Ban Issued to *{username}*\n"
         f"**IP Address:** *{ip}*\n"
-        f"**Reason:** *{reason}*\n"
-        f"**Base:** *{amount} {unit}* | *Points: {points} (TOTAL: {total_points})*\n"
-        f"**Multiplier:** *x{multiplier:.2f} →*\n"
-        f"**FINAL:** *_{final_duration}_*"
+        f"**Reason:** *{reason}*\n\n"
+        
+        f"**Base Duration:** *{amount} {unit}*\n"
+        f"**Multiplier Applied:** *x{multiplier:.2f}*\n\n"
+        f"**Points Added:** {points}  |  **Total:** {total_points}\n\n"
+        
+        f"**Final Duration:** `{final_duration_string}`\n\n"
+
+        f"**Issued By:** {moderator}"
     )
 
     thread = discord.utils.get(forum_channel.threads, name=username)
@@ -122,6 +141,7 @@ async def process_ban(interaction, reason, username, ip):
             reason="Punishment issued"
         )
 
+    # Send banip command
     admin_bot_channel = bot.get_channel(ADMIN_BOT_CHANNEL_ID)
     if admin_bot_channel:
         cmd = f"$admin banip {ip} \"{username}\" \"{reason}\" {final_duration}"
@@ -129,7 +149,7 @@ async def process_ban(interaction, reason, username, ip):
         print(f"📨 Sent banip command: {cmd}")
 
     await interaction.followup.send(
-        f"`{username}` has been punished for *__{amount} {unit}__* due to *{reason}*.",
+        f"`{username}` has been punished for *__{final_duration_value} {unit}__* due to *{reason}*.",
         ephemeral=True
     )
 
