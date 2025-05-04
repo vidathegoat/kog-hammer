@@ -170,8 +170,10 @@ async def process_ban(interaction, reason, username, ip):
         print(f"📨 Sent banip command: {cmd}")
 
     await interaction.followup.send(
-        f"`{username}` has been punished for *__{final_duration_value} {unit}__* due to *{reason}*.",
-        ephemeral=True
+        f"""```ansi
+[2;31m[1;31m{username}[0m[2;31m[0m has been punished for [2;31m[1;31m{final_duration_value} {unit}[0m[2;31m[0m due to [2;31m[1;31m{reason}[0m[2;31m[0m
+```\n"""
+        f"**[View punishment thread]({thread.jump_url})**"
     )
 
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
