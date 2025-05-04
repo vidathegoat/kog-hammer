@@ -2,6 +2,8 @@ import discord
 from math import log2
 from discord.ext import commands
 from discord import app_commands
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from db import (
     get_all_punishment_options,
     get_user_points,
@@ -102,6 +104,23 @@ async def process_ban(interaction, reason, username, ip):
     final_duration = f"{final_duration_value}{unit_abbrev}"
     final_duration_string = f"{final_duration_value} {unit}"
 
+    match unit:
+        case "minutes":
+            duration_converted = amount / 60
+        case "hours":
+            duration_converted = amount
+        case "days":
+            duration_converted = amount * 24
+        case "weeks":
+            duration_converted = amount * 168
+
+
+
+    now = datetime.now(ZoneInfo("America/New_York"))
+    ban_end = now + timedelta(hours=duration_converted)
+
+    unix_timestamp = int(ban_end.timestamp())
+
     # Add punishment record (AFTER calculating duration)
     add_punishment(username, ip, reason, amount, points, multiplier)
 
@@ -118,15 +137,16 @@ async def process_ban(interaction, reason, username, ip):
     mod_name = interaction.user.display_name
 
     message = (
-        f"## Ban Issued to *{username}*\n"
-        f"**IP Address:** *{ip}*\n"
-        f"**Reason:** *{reason}*\n\n"
+        f"## {username}\n"
+        f"**IP Address:** {ip}\n"
+        f"**Reason:** {reason}\n\n"
         
-        f"**Base Duration:** *{amount} {unit}*\n"
-        f"**Multiplier Applied:** *x{multiplier:.2f}*\n\n"
+        f"**Base Duration:** {amount} {unit}\n"
+        f"**Multiplier Applied:** x{multiplier:.2f}\n\n"
         f"**Points Added:** {points}  |  **Total:** {total_points}\n\n"
         
-        f"**Final Duration:** `{final_duration_string}`\n\n"
+        f"**Final Duration:** `{final_duration_string}`\n"
+        f"**Ban Ends:** <t:{unix_timestamp}:F>\n\n"
 
         f"**Issued By:** {moderator} ({mod_name})"
     )
