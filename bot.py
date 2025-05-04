@@ -133,7 +133,7 @@ async def process_ban(interaction, reason, username, ip):
 
     thread = discord.utils.get(forum_channel.threads, name=username)
     if thread:
-        await thread.send(message)
+        await thread.send(message, silent=True)
     else:
         thread = await forum_channel.create_thread(
             name=username,
