@@ -11,7 +11,7 @@ from db import (
     get_user_stage,
     get_catalog_punishment
 )
-from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
+from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD_ID
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -137,7 +137,6 @@ async def process_ban(interaction, reason, username, ip):
     mod_name = interaction.user.display_name
 
     message = (
-        f"## {username}\n"
         f"**IP Address:** {ip}\n"
         f"**Reason:** {reason}\n\n"
         
@@ -159,8 +158,12 @@ async def process_ban(interaction, reason, username, ip):
             name=username,
             content=message,
             auto_archive_duration=60,
-            reason="Punishment issued"
+            reason="Punishment issued",
+            allowed_mentions=discord.AllowedMentions.none()
         )
+
+    thread_link = thread.thread.id
+    link = f"https://discord.com/channels/{interaction.guild_id}/{thread_link}"
 
     # Send banip command
     admin_bot_channel = bot.get_channel(ADMIN_BOT_CHANNEL_ID)
@@ -173,7 +176,7 @@ async def process_ban(interaction, reason, username, ip):
         f"""```ansi
 [2;31m[1;31m{username}[0m[2;31m[0m has been punished for [2;31m[1;31m{final_duration_value} {unit}[0m[2;31m[0m due to [2;31m[1;31m{reason}[0m[2;31m[0m
 ```\n"""
-        f"**[View punishment thread]({thread.jump_url})**"
+    f"**[View punishment thread]({link})**"
     )
 
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
