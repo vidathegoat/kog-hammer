@@ -3,7 +3,6 @@ from math import log2
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta
-from dateutil import parser
 from zoneinfo import ZoneInfo
 from db import (
     get_all_punishment_options,
