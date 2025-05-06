@@ -66,7 +66,7 @@ def fetch_user_infractions(user_id):
     ]
 
 def calculate_total_decayed_points(infractions, current_time, test_mode=False):
-    DECAY_PERIOD = 15 if test_mode else 60 * 60 * 24 * 60  # 600s = 10min for testing, 60d in prod
+    DECAY_PERIOD = 15 if test_mode else 60 * 60 * 24 * 60  # 15s for testing, 60d in prod
     DECAY_FACTOR = 0.95
 
     total = 0.0
