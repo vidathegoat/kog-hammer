@@ -112,6 +112,9 @@ async def process_ban(interaction, reason, username, ip):
     log_infraction(username, points, reason)
 
     forum_channel = bot.get_channel(THREAD_CHANNEL_ID)
+    if forum_channel is None:
+        forum_channel = await bot.fetch_channel(THREAD_CHANNEL_ID)
+
     if not isinstance(forum_channel, discord.ForumChannel):
         print("❌ Forum channel not found or incorrect type.")
         return
