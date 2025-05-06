@@ -3,13 +3,18 @@ from math import log2
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timedelta
+from dateutil import parser
 from zoneinfo import ZoneInfo
 from db import (
     get_all_punishment_options,
     get_user_points,
     add_punishment,
     get_user_stage,
-    get_catalog_punishment
+    get_catalog_punishment,
+    get_latest_punishment,
+    fetch_user_infractions,
+    calculate_total_decayed_points,
+    log_infraction
 )
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD_ID
 
@@ -30,7 +35,6 @@ async def on_ready():
 
 class PunishmentSelect(discord.ui.Select):
     def __init__(self, punishments, username, ip):
-        # Get only unique reasons
         unique_reasons = {}
         for punishment in punishments:
             if punishment['reason'] not in unique_reasons:
@@ -39,23 +43,15 @@ class PunishmentSelect(discord.ui.Select):
         unique_punishments_list = list(unique_reasons.values())[:25]
 
         MAX_VALUE_LENGTH = 100
-
         options = []
         for punishment in unique_punishments_list:
             label = punishment['reason']
             if len(label) > 50:
                 label = label[:47] + "..."
-
             value = punishment['reason']
             if len(value) > MAX_VALUE_LENGTH:
                 value = value[:MAX_VALUE_LENGTH]
-
-            options.append(
-                discord.SelectOption(
-                    label=label,
-                    value=value
-                )
-            )
+            options.append(discord.SelectOption(label=label, value=value))
 
         super().__init__(placeholder="Choose a punishment reason", min_values=1, max_values=1, options=options)
         self.username = username
@@ -77,57 +73,45 @@ class PunishmentSelectView(discord.ui.View):
         self.add_item(PunishmentSelect(punishments, username, ip))
 
 async def process_ban(interaction, reason, username, ip):
-    # Determine current stage and next stage
     current_stage = get_user_stage(username, reason)
-    next_stage = current_stage  # stage already +1 in get_user_stage
+    next_stage = current_stage
 
-    # Fetch punishment template for the reason and stage
     template = get_catalog_punishment(reason, next_stage)
     if not template:
-        await interaction.followup.send(
-            f"⚠️ No template found for `{reason}` at stage {next_stage}.",
-            ephemeral=True
-        )
+        await interaction.followup.send(f"⚠️ No template found for `{reason}` at stage {next_stage}.", ephemeral=True)
         return
 
     amount = template['amount']
     points = template['points']
     unit = template.get('unit', 'days').lower()
 
-    # Fetch current total points BEFORE adding this punishment
-    current_points = get_user_points(username)
-    multiplier = max(log2(current_points + 1), 1)
+    now = datetime.now(ZoneInfo("America/New_York"))
+    infractions = fetch_user_infractions(username)
+    decayed_points = calculate_total_decayed_points(infractions, now, test_mode=True)
 
-    # Calculate final duration
+    multiplier = max(log2(decayed_points + 1), 1)
+
     unit_abbrev = {"minutes": "m", "hours": "h", "days": "d", "weeks": "w"}.get(unit, "d")
     final_duration_value = int(amount * multiplier)
     final_duration = f"{final_duration_value}{unit_abbrev}"
     final_duration_string = f"{final_duration_value} {unit}"
 
     match unit:
-        case "minutes":
-            duration_converted = amount / 60
-        case "hours":
-            duration_converted = amount
-        case "days":
-            duration_converted = amount * 24
-        case "weeks":
-            duration_converted = amount * 168
-
-
+        case "minutes": duration_converted = amount / 60
+        case "hours": duration_converted = amount
+        case "days": duration_converted = amount * 24
+        case "weeks": duration_converted = amount * 168
 
     now = datetime.now(ZoneInfo("America/New_York"))
     ban_end = now + timedelta(hours=duration_converted)
-
     unix_timestamp = int(ban_end.timestamp())
 
-    # Add punishment record (AFTER calculating duration)
-    add_punishment(username, ip, reason, amount, points, multiplier)
+    # Add punishment record
+    add_punishment(username, ip, reason, amount, points, multiplier, decayed_points)
 
-    # Total points after adding this one (for display only)
-    total_points = current_points + points
+    # ✅ Log the infraction so future bans calculate correctly
+    log_infraction(username, points, reason)
 
-    # Send to forum thread
     forum_channel = bot.get_channel(THREAD_CHANNEL_ID)
     if not isinstance(forum_channel, discord.ForumChannel):
         print("❌ Forum channel not found or incorrect type.")
@@ -139,20 +123,18 @@ async def process_ban(interaction, reason, username, ip):
     message = (
         f"**IP Address:** {ip}\n"
         f"**Reason:** {reason}\n\n"
-        
         f"**Base Duration:** {amount} {unit}\n"
         f"**Multiplier Applied:** x{multiplier:.2f}\n\n"
-        f"**Points Added:** {points}  |  **Total:** {total_points}\n\n"
-        
+        f"**Points Added:** {points}  |  **Decayed Total:** {decayed_points}\n\n"
         f"**Final Duration:** `{final_duration_string}`\n"
         f"**Ban Ends:** <t:{unix_timestamp}:F>\n\n"
-
         f"**Issued By:** {moderator} ({mod_name})"
     )
 
     thread = discord.utils.get(forum_channel.threads, name=username)
     if thread:
         await thread.send(message, silent=True)
+        thread_link = thread.id
     else:
         thread = await forum_channel.create_thread(
             name=username,
@@ -161,11 +143,10 @@ async def process_ban(interaction, reason, username, ip):
             reason="Punishment issued",
             allowed_mentions=discord.AllowedMentions.none()
         )
+        thread_link = thread.thread.id
 
-    thread_link = thread.thread.id
     link = f"https://discord.com/channels/{interaction.guild_id}/{thread_link}"
 
-    # Send banip command
     admin_bot_channel = bot.get_channel(ADMIN_BOT_CHANNEL_ID)
     if admin_bot_channel:
         cmd = f"$admin banip {ip} \"{username}\" \"{reason}\" {final_duration}"
@@ -176,7 +157,7 @@ async def process_ban(interaction, reason, username, ip):
         f"""```ansi
 [2;31m[1;31m{username}[0m[2;31m[0m has been punished for [2;31m[1;31m{final_duration_value} {unit}[0m[2;31m[0m due to [2;31m[1;31m{reason}[0m[2;31m[0m
 ```\n"""
-    f"**[View punishment thread]({link})**"
+        f"**[View punishment thread]({link})**"
     )
 
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
