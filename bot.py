@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.8"
+VERSION = "Version 0.11.9"
 # ======================================================================================================================
 
 
@@ -218,13 +218,11 @@ async def process_ban(interaction, reasons, username, ip):
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
-    print(f"[banip] Received command: username={username}, ip={ip}")
-
     try:
         await interaction.response.defer(ephemeral=True)
-        print("[banip] Interaction deferred successfully.")
+        print(f"[banip] Interaction deferred successfully for {username} @ {ip}")
     except discord.errors.NotFound:
-        print("[banip] ⚠️ Interaction expired or unknown.")
+        print(f"[banip] ⚠️ Interaction expired or unknown for {username} @ {ip}")
         return
 
     punishment_options = get_all_punishment_options()
