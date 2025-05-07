@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.2"
+VERSION = "Version 0.11.3"
 # ======================================================================================================================
 
 
@@ -45,7 +45,7 @@ class ConfirmPunishmentButton(discord.ui.Button):
         view: PunishmentSelectView = self.view
 
         if view.confirmed:
-            return  # silently ignore duplicates
+            return
 
         view.confirmed = True
 
@@ -205,21 +205,17 @@ async def process_ban(interaction, reasons, username, ip):
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
-    if interaction.response.is_done():
-        print("⚠️ Interaction already responded to or expired.")
+    punishment_options = get_all_punishment_options()
+    if not punishment_options:
+        await interaction.response.send_message("No punishment templates found.", ephemeral=True)
         return
+
+    view = PunishmentSelectView(punishment_options, username, ip)
 
     try:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.send_message("Please select a punishment template:", view=view, ephemeral=True)
     except discord.NotFound:
         print("⚠️ Interaction expired or invalid.")
-        return
 
-    punishment_options = get_all_punishment_options()
-    if punishment_options:
-        view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
-    else:
-        await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
 bot.run(DISCORD_TOKEN)
