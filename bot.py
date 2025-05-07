@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.10.5"
+VERSION = "Version 0.10.6"
 # ======================================================================================================================
 
 
@@ -73,10 +73,21 @@ class ConfirmPunishmentButton(discord.ui.Button):
 
 class PunishmentSelect(discord.ui.Select):
     def __init__(self, punishments):
-        options = [
-            discord.SelectOption(label=p['reason'], value=p['reason'])
-            for p in {p['reason']: p for p in punishments}.values()
-        ][:25]
+        MAX_LENGTH = 100
+
+        options = []
+        seen_reasons = set()
+
+        for p in punishments:
+            reason = p["reason"]
+            if reason in seen_reasons:
+                continue
+            seen_reasons.add(reason)
+
+            label = reason[:90] + "..." if len(reason) > MAX_LENGTH else reason
+            value = reason[:MAX_LENGTH]
+
+            options.append(discord.SelectOption(label=label, value=value))
 
         super().__init__(
             placeholder="Choose one or more punishment reasons",
