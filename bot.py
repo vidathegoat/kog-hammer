@@ -37,25 +37,23 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️  **Error** syncing commands: {e}")
 
-class PunishmentSelect(discord.ui.Select):
+class PunishmentSelectView(discord.ui.View):
     def __init__(self, punishments, username, ip):
-        unique_reasons = {}
-        for punishment in punishments:
-            if punishment['reason'] not in unique_reasons:
-                unique_reasons[punishment['reason']] = punishment
+        super().__init__(timeout=None)
+        self.selected_reasons = []
+        self.username = username
+        self.ip = ip
 
-        unique_punishments_list = list(unique_reasons.values())[:25]
+        self.add_item(PunishmentSelect(punishments, self))
+        self.add_item(SubmitButton())
 
-        MAX_VALUE_LENGTH = 100
-        options = []
-        for punishment in unique_punishments_list:
-            label = punishment['reason']
-            if len(label) > 50:
-                label = label[:47] + "..."
-            value = punishment['reason']
-            if len(value) > MAX_VALUE_LENGTH:
-                value = value[:MAX_VALUE_LENGTH]
-            options.append(discord.SelectOption(label=label, value=value))
+class PunishmentSelect(discord.ui.Select):
+    def __init__(self, punishments, parent_view):
+        self.view = parent_view
+        unique_reasons = {p['reason']: p for p in punishments}
+        options = [
+            discord.SelectOption(label=r, value=r) for r in list(unique_reasons)[:25]
+        ]
 
         super().__init__(
             placeholder="Choose one or more punishment reasons",
@@ -63,23 +61,27 @@ class PunishmentSelect(discord.ui.Select):
             max_values=len(options),
             options=options
         )
-        self.username = username
-        self.ip = ip
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        selected_reasons = self.values
-        await process_ban(interaction, selected_reasons, self.username, self.ip)
+        self.view.selected_reasons = self.values
+        await interaction.response.send_message("✅ Selected. Now click Submit to confirm.", ephemeral=True)
 
-        self.disabled = True
+class SubmitButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Submit", style=discord.ButtonStyle.green)
+
+    async def callback(self, interaction: discord.Interaction):
+        reasons = self.view.selected_reasons
+        if not reasons:
+            await interaction.response.send_message("⚠️ Please select at least one reason first.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        await process_ban(interaction, reasons, self.view.username, self.view.ip)
+
         for child in self.view.children:
             child.disabled = True
         await interaction.edit_original_response(view=self.view)
-
-class PunishmentSelectView(discord.ui.View):
-    def __init__(self, punishments, username, ip):
-        super().__init__(timeout=None)
-        self.add_item(PunishmentSelect(punishments, username, ip))
 
 async def process_ban(interaction, reasons, username, ip):
     total_amount = 0
@@ -179,12 +181,10 @@ async def process_ban(interaction, reasons, username, ip):
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
-    await interaction.response.defer(ephemeral=True)
-
     punishment_options = get_all_punishment_options()
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
+        await interaction.response.send_message("Please select punishments and click Submit:", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
