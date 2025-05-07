@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.10.2"
+VERSION = "Version 0.10.3"
 # ======================================================================================================================
 
 
@@ -42,11 +42,16 @@ class ConfirmPunishmentButton(discord.ui.Button):
         super().__init__(label="Confirm", style=discord.ButtonStyle.green)
 
     async def callback(self, interaction: discord.Interaction):
-        view: PunishmentSelectView = self.view  # access the parent view
+        view: PunishmentSelectView = self.view
+
+        if view.confirmed:
+            await interaction.response.send_message("⚠️ Punishment already confirmed.", ephemeral=True)
+            return
+
+        view.confirmed = True
         await interaction.response.defer(ephemeral=True)
         await process_ban(interaction, view.selected_reasons, view.username, view.ip)
 
-        # Disable everything after use
         for child in self.view.children:
             child.disabled = True
         await interaction.edit_original_response(view=self.view)
@@ -66,10 +71,11 @@ class PunishmentSelect(discord.ui.Select):
             options=options
         )
 
+
     async def callback(self, interaction: discord.Interaction):
         view: PunishmentSelectView = self.view
         view.selected_reasons = self.values
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
             ephemeral=True
         )
@@ -81,9 +87,9 @@ class PunishmentSelectView(discord.ui.View):
         self.username = username
         self.ip = ip
         self.selected_reasons = []
+        self.confirmed = False
         self.add_item(PunishmentSelect(punishments))
         self.add_item(ConfirmPunishmentButton())
-
 
 async def process_ban(interaction, reasons, username, ip):
     total_amount = 0
@@ -183,15 +189,17 @@ async def process_ban(interaction, reasons, username, ip):
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except discord.errors.NotFound:
+        print("⚠️ Interaction expired or unknown. Cannot defer.")
+        return
+
     punishment_options = get_all_punishment_options()
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.response.send_message(
-            "Select punishment reasons and click Confirm:",
-            view=view,
-            ephemeral=True
-        )
+        await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
     else:
-        await interaction.response.send_message("No punishment templates found.", ephemeral=True)
+        await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
 bot.run(DISCORD_TOKEN)
