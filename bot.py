@@ -64,7 +64,7 @@ class PunishmentSelect(discord.ui.Select):
         self.disabled = True
         for child in self.view.children:
             child.disabled = True
-        await interaction.message.edit(view=self.view)
+        await interaction.edit_original_response(view=self.view)
 
 class PunishmentSelectView(discord.ui.View):
     def __init__(self, punishments, username, ip):
@@ -168,7 +168,7 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
     punishment_options = get_all_punishment_options()
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.response.send_message("Please select a punishment template:", view=view)
+        await interaction.response.send_message("Please select a punishment template:", view=view, ephemeral=True)
     else:
         await interaction.response.send_message("No punishment templates found.", ephemeral=True)
 
