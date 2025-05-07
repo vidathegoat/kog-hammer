@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.5"
+VERSION = "Version 0.11.6"
 # ======================================================================================================================
 
 
@@ -222,17 +222,19 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
     punishment_options = get_all_punishment_options()
     print(f"[banip] Fetched punishment options: {len(punishment_options)} found")
 
-    if not punishment_options:
+    if punishment_options:
+        view = PunishmentSelectView(punishment_options, username, ip)
+        try:
+            await interaction.response.send_message(
+                "Please select a punishment template:",
+                view=view,
+                ephemeral=True
+            )
+            print("[banip] Interaction response sent successfully.")
+        except Exception as e:
+            print(f"[banip] ⚠️ Exception while sending response: {e}")
+    else:
         await interaction.response.send_message("No punishment templates found.", ephemeral=True)
-        return
-
-    view = PunishmentSelectView(punishment_options, username, ip)
-
-    try:
-        await interaction.response.send_message("Please select a punishment template:", view=view, ephemeral=True)
-        print("[banip] Interaction response sent successfully.")
-    except Exception as e:
-        print(f"[banip] ⚠️ Exception while sending response: {e}")
 
 
 bot.run(DISCORD_TOKEN)
