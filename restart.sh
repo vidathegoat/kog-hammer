@@ -1,6 +1,7 @@
 #!/bin/bash
 cd ~/kog-hammer
 source .venv/bin/activate
+pkill -f bot.py
 git pull origin main
 
 while true; do
