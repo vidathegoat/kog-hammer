@@ -6,18 +6,16 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from db import (
     get_all_punishment_options,
-    get_user_points,
     add_punishment,
     get_user_stage,
     get_catalog_punishment,
-    get_latest_punishment,
     fetch_user_infractions,
     calculate_total_decayed_points,
     log_infraction
 )
-from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD_ID
+from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
-VERSION = "Currently running on Version 0.9.1"
+VERSION = "Version 0.9.1"
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -27,7 +25,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await bot.change_presence(activity=discord.Game(name=f"KoG Hammer {VERSION}"))
+    await bot.change_presence(activity=discord.Game(name=f"on {VERSION}"))
     print(f"🔨🛡️  {bot.user} is now online and watching over the realm! [Version: {VERSION}]")
     try:
         synced = await bot.tree.sync()
