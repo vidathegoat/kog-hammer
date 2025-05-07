@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.6"
+VERSION = "Version 0.11.7"
 # ======================================================================================================================
 
 
@@ -58,6 +58,7 @@ class ConfirmPunishmentButton(discord.ui.Button):
         try:
             print("[Confirm] Deferring interaction...")
             await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send("⚔️ Applying punishment...", ephemeral=True)
         except discord.NotFound:
             print("⚠️ Confirm button interaction expired or unknown.")
             return
@@ -107,6 +108,9 @@ class PunishmentSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         view: PunishmentSelectView = self.view
         view.selected_reasons = self.values
+
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
 
 
 class PunishmentSelectView(discord.ui.View):
