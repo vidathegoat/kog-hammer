@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.9"
+VERSION = "Version 0.11.10"
 # ======================================================================================================================
 
 
@@ -206,13 +206,25 @@ async def process_ban(interaction, reasons, username, ip):
         await admin_bot_channel.send(cmd)
         print(f"📨 Sent banip command: {cmd}")
 
-    await interaction.followup.send(
-        f"""```ansi
-[2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list}[0m[2;34m[0m
-```
-"""
-        f"**[View punishment thread]({link})**"
-    )
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(f"""```ansi
+            [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list}[0m[2;34m[0m
+            ```
+            """
+                f"**[View punishment thread]({link})**"
+            )
+        else:
+            await interaction.followup.send(
+                f"""```ansi
+            [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list}[0m[2;34m[0m
+            ```
+            """
+                f"**[View punishment thread]({link})**"
+            )
+    except discord.errors.NotFound:
+        print("⚠️ Could not send followup message — interaction expired.")
+
 
 
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
@@ -221,6 +233,9 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
     try:
         await interaction.response.defer(ephemeral=True)
         print(f"[banip] Interaction deferred successfully for {username} @ {ip}")
+    except discord.errors.InteractionResponded:
+        print(f"[banip] ⚠️ Interaction already responded to for {username} @ {ip}")
+        return
     except discord.errors.NotFound:
         print(f"[banip] ⚠️ Interaction expired or unknown for {username} @ {ip}")
         return
