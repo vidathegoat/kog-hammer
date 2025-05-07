@@ -217,7 +217,7 @@ async def process_ban(interaction, reasons, username, ip):
     )
 
 
-@bot.tree.command(name="banip", description="Ban a user using a points-based system.")
+@bot.tree.command(name="banip", description="Ban a user using a points-based system.", guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
     await interaction.response.defer(ephemeral=True)
