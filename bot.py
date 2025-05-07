@@ -13,11 +13,11 @@ from db import (
     calculate_total_decayed_points,
     log_infraction
 )
-from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
+from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 0.10.1"
+VERSION = "Version 0.10.2"
 # ======================================================================================================================
 
 
@@ -37,23 +37,27 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️  **Error** syncing commands: {e}")
 
-class PunishmentSelectView(discord.ui.View):
-    def __init__(self, punishments, username, ip):
-        super().__init__(timeout=None)
-        self.selected_reasons = []
-        self.username = username
-        self.ip = ip
+class ConfirmPunishmentButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Confirm", style=discord.ButtonStyle.green)
 
-        self.add_item(PunishmentSelect(punishments, self))
-        self.add_item(SubmitButton())
+    async def callback(self, interaction: discord.Interaction):
+        view: PunishmentSelectView = self.view  # access the parent view
+        await interaction.response.defer(ephemeral=True)
+        await process_ban(interaction, view.selected_reasons, view.username, view.ip)
+
+        # Disable everything after use
+        for child in self.view.children:
+            child.disabled = True
+        await interaction.edit_original_response(view=self.view)
+
 
 class PunishmentSelect(discord.ui.Select):
-    def __init__(self, punishments, parent_view):
-        self.view = parent_view
-        unique_reasons = {p['reason']: p for p in punishments}
+    def __init__(self, punishments):
         options = [
-            discord.SelectOption(label=r, value=r) for r in list(unique_reasons)[:25]
-        ]
+            discord.SelectOption(label=p['reason'], value=p['reason'])
+            for p in {p['reason']: p for p in punishments}.values()
+        ][:25]
 
         super().__init__(
             placeholder="Choose one or more punishment reasons",
@@ -63,25 +67,23 @@ class PunishmentSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        self.view.selected_reasons = self.values
-        await interaction.response.send_message("✅ Selected. Now click Submit to confirm.", ephemeral=True)
+        view: PunishmentSelectView = self.view
+        view.selected_reasons = self.values
+        await interaction.response.send_message(
+            f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
+            ephemeral=True
+        )
 
-class SubmitButton(discord.ui.Button):
-    def __init__(self):
-        super().__init__(label="Submit", style=discord.ButtonStyle.green)
 
-    async def callback(self, interaction: discord.Interaction):
-        reasons = self.view.selected_reasons
-        if not reasons:
-            await interaction.response.send_message("⚠️ Please select at least one reason first.", ephemeral=True)
-            return
+class PunishmentSelectView(discord.ui.View):
+    def __init__(self, punishments, username, ip):
+        super().__init__(timeout=None)
+        self.username = username
+        self.ip = ip
+        self.selected_reasons = []
+        self.add_item(PunishmentSelect(punishments))
+        self.add_item(ConfirmPunishmentButton())
 
-        await interaction.response.defer(ephemeral=True)
-        await process_ban(interaction, reasons, self.view.username, self.view.ip)
-
-        for child in self.view.children:
-            child.disabled = True
-        await interaction.edit_original_response(view=self.view)
 
 async def process_ban(interaction, reasons, username, ip):
     total_amount = 0
@@ -179,13 +181,18 @@ async def process_ban(interaction, reasons, username, ip):
 
 
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
+@app_commands.guilds(discord.Object(id=GUILD_ID))
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
     punishment_options = get_all_punishment_options()
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.response.send_message("Please select punishments and click Submit:", view=view, ephemeral=True)
+        await interaction.response.send_message(
+            "Select punishment reasons and click Confirm:",
+            view=view,
+            ephemeral=True
+        )
     else:
-        await interaction.followup.send("No punishment templates found.", ephemeral=True)
+        await interaction.response.send_message("No punishment templates found.", ephemeral=True)
 
 bot.run(DISCORD_TOKEN)
