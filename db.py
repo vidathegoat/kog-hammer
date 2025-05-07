@@ -1,5 +1,6 @@
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
+from dateutil import parser
 
 supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -56,11 +57,10 @@ def fetch_user_infractions(user_id):
     if not response.data:
         return []
 
-    from datetime import datetime
     return [
         {
             "points": entry["points"],
-            "timestamp": datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+            "timestamp": parser.isoparse(entry["timestamp"])
         }
         for entry in response.data
     ]

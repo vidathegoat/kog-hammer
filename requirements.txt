@@ -2,3 +2,4 @@ discord.py
 python-dotenv
 python-dateutil
 supabase
+python-dateutil

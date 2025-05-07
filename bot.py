@@ -100,19 +100,16 @@ class PunishmentSelect(discord.ui.Select):
         view: PunishmentSelectView = self.view
         view.selected_reasons = self.values
 
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
-                    ephemeral=True
-                )
-            else:
-                await interaction.followup.send(
-                    f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
-                    ephemeral=True
-                )
-        except discord.NotFound:
-            print("⚠️ Interaction expired or webhook no longer valid.")
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
+                ephemeral=True
+            )
 
 
 class PunishmentSelectView(discord.ui.View):
