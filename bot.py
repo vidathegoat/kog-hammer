@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.1"
+VERSION = "Version 0.11.2"
 # ======================================================================================================================
 
 
@@ -45,11 +45,7 @@ class ConfirmPunishmentButton(discord.ui.Button):
         view: PunishmentSelectView = self.view
 
         if view.confirmed:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("⚠️ Punishment already confirmed.", ephemeral=True)
-            else:
-                await interaction.followup.send("⚠️ Punishment already confirmed.", ephemeral=True)
-            return
+            return  # silently ignore duplicates
 
         view.confirmed = True
 
@@ -99,17 +95,6 @@ class PunishmentSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         view: PunishmentSelectView = self.view
         view.selected_reasons = self.values
-
-        if not interaction.response.is_done():
-            await interaction.response.send_message(
-                f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
-                ephemeral=True
-            )
-        else:
-            await interaction.followup.send(
-                f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
-                ephemeral=True
-            )
 
 
 class PunishmentSelectView(discord.ui.View):
@@ -220,12 +205,19 @@ async def process_ban(interaction, reasons, username, ip):
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
-    await interaction.response.defer(ephemeral=True)
+    if interaction.response.is_done():
+        print("⚠️ Interaction already responded to or expired.")
+        return
+
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except discord.NotFound:
+        print("⚠️ Interaction expired or invalid.")
+        return
 
     punishment_options = get_all_punishment_options()
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
-        # 👇 Use followup after deferring
         await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
