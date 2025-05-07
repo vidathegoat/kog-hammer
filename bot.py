@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.10.4"
+VERSION = "Version 0.10.5"
 # ======================================================================================================================
 
 
@@ -203,15 +203,12 @@ async def process_ban(interaction, reasons, username, ip):
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
-    try:
-        await interaction.response.defer(ephemeral=True)
-    except discord.errors.NotFound:
-        print("⚠️ Interaction expired or unknown. Cannot defer.")
-        return
+    await interaction.response.defer(ephemeral=True)
 
     punishment_options = get_all_punishment_options()
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
+        # 👇 Use followup after deferring
         await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
