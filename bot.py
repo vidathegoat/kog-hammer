@@ -15,7 +15,11 @@ from db import (
 )
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
-VERSION = "Version 0.9.1"
+
+# ======================================================================================================================
+VERSION = "Version 0.9.2"
+# ======================================================================================================================
+
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -171,14 +175,17 @@ async def process_ban(interaction, reasons, username, ip):
         f"**[View punishment thread]({link})**"
     )
 
+
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
+    await interaction.response.defer(ephemeral=True)
+
     punishment_options = get_all_punishment_options()
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.response.send_message("Please select a punishment template:", view=view, ephemeral=True)
+        await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
     else:
-        await interaction.response.send_message("No punishment templates found.", ephemeral=True)
+        await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
 bot.run(DISCORD_TOKEN)
