@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.7"
+VERSION = "Version 0.11.8"
 # ======================================================================================================================
 
 
@@ -56,12 +56,9 @@ class ConfirmPunishmentButton(discord.ui.Button):
         view.confirmed = True
 
         try:
-            print("[Confirm] Deferring interaction...")
-            await interaction.response.defer(ephemeral=True)
             await interaction.followup.send("⚔️ Applying punishment...", ephemeral=True)
-        except discord.NotFound:
-            print("⚠️ Confirm button interaction expired or unknown.")
-            return
+        except discord.errors.NotFound:
+            print("⚠️ Could not send progress update – interaction expired.")
 
         print("[Confirm] Calling process_ban...")
         try:
@@ -223,22 +220,21 @@ async def process_ban(interaction, reasons, username, ip):
 async def banip(interaction: discord.Interaction, username: str, ip: str):
     print(f"[banip] Received command: username={username}, ip={ip}")
 
+    try:
+        await interaction.response.defer(ephemeral=True)
+        print("[banip] Interaction deferred successfully.")
+    except discord.errors.NotFound:
+        print("[banip] ⚠️ Interaction expired or unknown.")
+        return
+
     punishment_options = get_all_punishment_options()
     print(f"[banip] Fetched punishment options: {len(punishment_options)} found")
 
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
-        try:
-            await interaction.response.send_message(
-                "Please select a punishment template:",
-                view=view,
-                ephemeral=True
-            )
-            print("[banip] Interaction response sent successfully.")
-        except Exception as e:
-            print(f"[banip] ⚠️ Exception while sending response: {e}")
+        await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
     else:
-        await interaction.response.send_message("No punishment templates found.", ephemeral=True)
+        await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
 
 bot.run(DISCORD_TOKEN)
