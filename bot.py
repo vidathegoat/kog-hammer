@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.10.6"
+VERSION = "Version 0.10.7"
 # ======================================================================================================================
 
 
@@ -96,14 +96,23 @@ class PunishmentSelect(discord.ui.Select):
             options=options
         )
 
-
     async def callback(self, interaction: discord.Interaction):
         view: PunishmentSelectView = self.view
         view.selected_reasons = self.values
-        await interaction.followup.send(
-            f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
-            ephemeral=True
-        )
+
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
+                    ephemeral=True
+                )
+            else:
+                await interaction.followup.send(
+                    f"✅ Selected: {', '.join(self.values)}.\nClick confirm to apply punishment.",
+                    ephemeral=True
+                )
+        except discord.NotFound:
+            print("⚠️ Interaction expired or webhook no longer valid.")
 
 
 class PunishmentSelectView(discord.ui.View):
