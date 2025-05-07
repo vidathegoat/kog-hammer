@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.3"
+VERSION = "Version 0.11.4"
 # ======================================================================================================================
 
 
@@ -205,7 +205,11 @@ async def process_ban(interaction, reasons, username, ip):
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 async def banip(interaction: discord.Interaction, username: str, ip: str):
+    print(f"[banip] Received command: username={username}, ip={ip}")
+
     punishment_options = get_all_punishment_options()
+    print(f"[banip] Fetched punishment options: {len(punishment_options)} found")
+
     if not punishment_options:
         await interaction.response.send_message("No punishment templates found.", ephemeral=True)
         return
@@ -214,8 +218,9 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
 
     try:
         await interaction.response.send_message("Please select a punishment template:", view=view, ephemeral=True)
-    except discord.NotFound:
-        print("⚠️ Interaction expired or invalid.")
+        print("[banip] Interaction response sent successfully.")
+    except Exception as e:
+        print(f"[banip] ⚠️ Exception while sending response: {e}")
 
 
 bot.run(DISCORD_TOKEN)
