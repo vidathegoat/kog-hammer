@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.10.3"
+VERSION = "Version 0.10.4"
 # ======================================================================================================================
 
 
@@ -45,16 +45,30 @@ class ConfirmPunishmentButton(discord.ui.Button):
         view: PunishmentSelectView = self.view
 
         if view.confirmed:
-            await interaction.response.send_message("⚠️ Punishment already confirmed.", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ Punishment already confirmed.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ Punishment already confirmed.", ephemeral=True)
             return
 
         view.confirmed = True
-        await interaction.response.defer(ephemeral=True)
+
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+        except discord.NotFound:
+            print("⚠️ Confirm button interaction expired or unknown.")
+            return
+
         await process_ban(interaction, view.selected_reasons, view.username, view.ip)
 
-        for child in self.view.children:
+        for child in view.children:
             child.disabled = True
-        await interaction.edit_original_response(view=self.view)
+
+        try:
+            await interaction.edit_original_response(view=view)
+        except discord.NotFound:
+            print("⚠️ Could not update original message — it may have been deleted.")
 
 
 class PunishmentSelect(discord.ui.Select):
