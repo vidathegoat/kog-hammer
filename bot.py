@@ -30,7 +30,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 @bot.event
 async def on_ready():
     await bot.change_presence(activity=discord.Game(name=f"on {VERSION}"))
-    print(f"🔨🛡️  {bot.user} is now online and watching over the realm! [Version: {VERSION}]")
+    print(f"🔨🛡️  {bot.user} is now online and watching over the realm! [{VERSION}]")
     try:
         synced = await bot.tree.sync()
         print(f"⚔️🔁  Synced: {len(synced)} slash command ready for battle!")
