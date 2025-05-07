@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.4"
+VERSION = "Version 0.11.5"
 # ======================================================================================================================
 
 
@@ -42,21 +42,33 @@ class ConfirmPunishmentButton(discord.ui.Button):
         super().__init__(label="Confirm", style=discord.ButtonStyle.green)
 
     async def callback(self, interaction: discord.Interaction):
+        print("[Confirm] Confirm button clicked.")
         view: PunishmentSelectView = self.view
 
         if view.confirmed:
+            print("[Confirm] Already confirmed.")
+            try:
+                await interaction.response.send_message("⚠️ Punishment already confirmed.", ephemeral=True)
+            except discord.errors.InteractionResponded:
+                await interaction.followup.send("⚠️ Punishment already confirmed.", ephemeral=True)
             return
 
         view.confirmed = True
 
         try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
+            print("[Confirm] Deferring interaction...")
+            await interaction.response.defer(ephemeral=True)
         except discord.NotFound:
             print("⚠️ Confirm button interaction expired or unknown.")
             return
 
-        await process_ban(interaction, view.selected_reasons, view.username, view.ip)
+        print("[Confirm] Calling process_ban...")
+        try:
+            await process_ban(interaction, view.selected_reasons, view.username, view.ip)
+            print("[Confirm] process_ban complete.")
+        except Exception as e:
+            print(f"⚠️ Exception during process_ban: {e}")
+            return
 
         for child in view.children:
             child.disabled = True
