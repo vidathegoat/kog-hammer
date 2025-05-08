@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.12.1"
+VERSION = "Version 0.12.2"
 # ======================================================================================================================
 
 
@@ -153,11 +153,14 @@ async def process_ban(interaction, reasons, username, ip):
 
     link = f"https://discord.com/channels/{interaction.guild_id}/{thread_link}"
 
-    admin_bot_channel = bot.get_channel(ADMIN_BOT_CHANNEL_ID)
-    if admin_bot_channel:
-        cmd = f"$admin banip {ip} \"{username}\" \"{reason_list}\" {final_duration}"
+    cmd = f"$admin banip {ip} \"{username}\" \"{reason_list}\" {final_duration}"
+    try:
+        admin_bot_channel = await bot.fetch_channel(ADMIN_BOT_CHANNEL_ID)
+        print(f"[Debug] Fetched admin channel: {admin_bot_channel}")
         await admin_bot_channel.send(cmd)
         print(f"📨 Sent banip command: {cmd}")
+    except Exception as e:
+        print(f"❌ Failed to send admin command: {e}")
 
     try:
         await interaction.followup.send(
