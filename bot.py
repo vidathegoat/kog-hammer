@@ -20,7 +20,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.3"
+VERSION = "Version 1.2.4"
 
 # ======================================================================================================================
 
@@ -206,27 +206,31 @@ async def process_ban(interaction, reasons, username, ip):
     reason_list = ", ".join(reasons)
     moderator   = interaction.user.mention
     mod_name    = interaction.user.display_name
-    mode_tag    = " (ban avoided)" if avoid_mode else ""
+    mode_tag    = " [AVOID]" if avoid_mode else ""
+
+    multiplier_text = multiplier if not avoid_mode else reused_multiplier
 
     embed_desc = (
-        f"**IP:** `{ip}`\n"
-        f"**Reasons{mode_tag}:** {reason_list}\n"
-        f"**Duration:** `{final_duration_string}`\n"
+        f"**IP Address:** `{ip}`\n"
+        f"**Reasons{mode_tag}:** {reason_list}\n\n"
+        
+        f"**Base Duration Sum:** `{total_amount} {unit}`\n"
+        f"**Multiplier Applied:** `x{multiplier_text:.2f}`\n\n"
+        
+        f"**Final Duration:** `{final_duration_string}`\n"
         f"**Ends:** <t:{unix_ts}:F>\n"
-        f"**Issued By:** {moderator} ({mod_name})"
+        f"**Issued By:** {moderator} [{mod_name}]"
     )
-
-    message = f"**Punishment Record**\n\n{embed_desc}"
 
     thread = discord.utils.get(forum_channel.threads, name=username)
     if thread:
-        await thread.send(message, silent=True)
+        await thread.send(embed_desc, silent=True)
 
         thread_link = thread.id
     else:
         thread = await forum_channel.create_thread(
             name=username,
-            content=message,
+            content=embed_desc,
             auto_archive_duration=60,
             reason="Punishment issued",
             allowed_mentions=discord.AllowedMentions.none()
@@ -248,9 +252,9 @@ async def process_ban(interaction, reasons, username, ip):
     # moderator feedback
     await interaction.followup.send(
         f"""```ansi
-        [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reasons}[0m[2;34m[0m
-        ```\n"""
-        f"**[View punishment thread]({link})**"
+    [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reasons}[0m[2;34m[0m
+    ```\n"""
+    f"**[View punishment thread]({link})**"
     )
 
 
