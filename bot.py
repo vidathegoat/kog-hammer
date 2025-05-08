@@ -20,7 +20,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.4"
+VERSION = "Version 1.2.5"
 
 # ======================================================================================================================
 
@@ -217,6 +217,8 @@ async def process_ban(interaction, reasons, username, ip):
         f"**Base Duration Sum:** `{total_amount} {unit}`\n"
         f"**Multiplier Applied:** `x{multiplier_text:.2f}`\n\n"
         
+        f"**Points Added:** {total_points}  |  **Decayed Total:** {decayed_points}\n\n"
+        
         f"**Final Duration:** `{final_duration_string}`\n"
         f"**Ends:** <t:{unix_ts}:F>\n"
         f"**Issued By:** {moderator} [{mod_name}]"
@@ -252,8 +254,8 @@ async def process_ban(interaction, reasons, username, ip):
     # moderator feedback
     await interaction.followup.send(
         f"""```ansi
-    [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reasons}[0m[2;34m[0m
-    ```\n"""
+[2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason}[0m[2;34m[0m
+```\n"""
     f"**[View punishment thread]({link})**"
     )
 
