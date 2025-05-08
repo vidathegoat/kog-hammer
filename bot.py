@@ -13,11 +13,11 @@ from db import (
     calculate_total_decayed_points,
     log_infraction
 )
-from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD_ID
+from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 0.12.2"
+VERSION = "Version 1.0.0"
 # ======================================================================================================================
 
 
