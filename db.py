@@ -95,12 +95,13 @@ def get_catalog_punishment(reason, stage):
         return result.data[0]
     return None
 
-def get_latest_punishment(username):
+def get_latest_punishment(username, reason):
     result = (
         supabase_client
         .from_('punishments')
-        .select('created_at, points, total_points_at_ban')
+        .select('*')
         .eq('user_id', username)
+        .eq('reason', reason)
         .order('created_at', desc=True)
         .limit(1)
         .execute()

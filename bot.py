@@ -12,13 +12,16 @@ from db import (
     get_catalog_punishment,
     fetch_user_infractions,
     calculate_total_decayed_points,
-    log_infraction
+    log_infraction,
+    get_latest_punishment
 )
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 1.1.4"
+
+VERSION = "Version 1.2.2"
+
 # ======================================================================================================================
 
 
@@ -56,6 +59,14 @@ class PunishmentSelect(discord.ui.Select):
 
             options.append(discord.SelectOption(label=label, value=value))
 
+        options.append(
+            discord.SelectOption(
+                label="Avoid Ban",
+                value="__AVOID__",
+                description="Select this option together with the offence(s) being avoided"
+            )
+        )
+
         super().__init__(
             placeholder="Choose one or more punishment reasons",
             min_values=1,
@@ -75,73 +86,141 @@ class PunishmentSelectView(discord.ui.View):
         self.add_item(PunishmentSelect(punishments, username, ip))
 
 async def process_ban(interaction, reasons, username, ip):
-    total_amount = 0
-    total_points = 0
-    unit = "days"
+    """Apply a normal ban **or** re‑apply a previous ban if '__AVOID__' is present."""
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 1.  Split off the special option
+    # ─────────────────────────────────────────────────────────────────────────────
+    avoid_mode = "__AVOID__" in reasons
+    reasons    = [r for r in reasons if r != "__AVOID__"]          # only real offences
 
-    for reason in reasons:
-        stage = get_user_stage(username, reason)
-        template = get_catalog_punishment(reason, stage)
-        if not template:
-            await interaction.followup.send(f"⚠️ No template found for `{reason}` at stage {stage}.", ephemeral=True)
-            return
-        total_amount += template['amount']
-        total_points += template['points']
-        unit = template.get('unit', unit)
+    if not reasons:            # we always need at least one real reason
+        await interaction.followup.send(
+            "⚠ Select at least one offence together with **Avoid Ban**.", ephemeral=True
+        )
+        return
 
-    now = datetime.now(ZoneInfo("America/New_York"))
-    infractions = fetch_user_infractions(username)
-    decayed_points = calculate_total_decayed_points(infractions, now, test_mode=True)
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 2.  Fetch catalogue / previous‑ban data
+    # ─────────────────────────────────────────────────────────────────────────────
+    total_amount     = 0            # raw catalogue amount sum (normal path)
+    total_points     = 0
+    unit             = "days"
+    reused_multiplier = 1           # largest multiplier reused in avoid mode
+    total_hours      = 0            # we’ll sum everything in hours for avoid
 
-    multiplier = max(log2(decayed_points + 1), 1)
+    def hours_from(amount, unit):
+        return amount * {"minutes": 1/60, "hours": 1, "days": 24, "weeks": 168}[unit]
 
-    unit_abbrev = {"minutes": "m", "hours": "h", "days": "d", "weeks": "w"}.get(unit, "d")
-    final_duration_value = int(total_amount * multiplier)
+    if avoid_mode:
+        for reason in reasons:
+            prev = get_latest_punishment(username, reason)
+            if not prev:
+                await interaction.followup.send(
+                    f"⚠ No previous ban found for **{reason}** – cannot avoid.",
+                    ephemeral=True
+                )
+                return
+
+            reused_multiplier  = max(reused_multiplier, prev["multiplier"])
+            total_hours       += hours_from(prev["base_days"], prev["unit"])
+            unit               = prev["unit"]        # keep for display later
+
+        # durations
+        duration_converted   = total_hours           # already in hours
+        final_duration_value = int(total_hours)
+        decayed_points       = 0
+        total_points         = 0
+
+    else:
+        # ───────────────────────────── normal *new* ban ─────────────────────────
+        for reason in reasons:
+            stage    = get_user_stage(username, reason)
+            template = get_catalog_punishment(reason, stage)
+            if not template:
+                await interaction.followup.send(
+                    f"⚠️ No template found for `{reason}` at stage {stage}.",
+                    ephemeral=True
+                )
+                return
+            total_amount += template["amount"]
+            total_points += template["points"]
+            unit          = template.get("unit", unit)
+
+        now             = datetime.now(ZoneInfo("America/New_York"))
+        infractions      = fetch_user_infractions(username)
+        decayed_points   = calculate_total_decayed_points(infractions, now, test_mode=True)
+        multiplier       = max(log2(decayed_points + 1), 1)
+        unit_abbrev      = {"minutes": "m", "hours": "h", "days": "d", "weeks": "w"}.get(unit, "d")
+        final_duration_value = int(total_amount * multiplier)
+        duration_converted   = (
+            total_amount * {"minutes": 1/60, "hours": 1, "days": 24, "weeks": 168}[unit]
+        )                                # hours for timestamp
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 3.  Compute dates / strings common to both paths
+    # ─────────────────────────────────────────────────────────────────────────────
+    now        = datetime.now(ZoneInfo("America/New_York"))
+    ban_end    = now + timedelta(hours=duration_converted)
+    unix_ts    = int(ban_end.timestamp())
+    unit_abbrev = {"minutes": "m", "hours": "h", "days": "d",
+                   "weeks": "w"}.get(unit, "d")
     final_duration = f"{final_duration_value}{unit_abbrev}"
     final_duration_string = f"{final_duration_value} {unit}"
 
-    match unit:
-        case "minutes": duration_converted = total_amount / 60
-        case "hours": duration_converted = total_amount
-        case "days": duration_converted = total_amount * 24
-        case "weeks": duration_converted = total_amount * 168
-
-    ban_end = now + timedelta(hours=duration_converted)
-    unix_timestamp = int(ban_end.timestamp())
-
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 4.  Write rows back to DB
+    #     • avoid‑ban: 0 pts, reuse prev multiplier
+    # ─────────────────────────────────────────────────────────────────────────────
     for reason in reasons:
-        stage = get_user_stage(username, reason)
-        template = get_catalog_punishment(reason, stage)
-        add_punishment(username, ip, reason, template['amount'], template['points'], multiplier, decayed_points)
-        log_infraction(username, template['points'], reason)
+        if avoid_mode:
+            prev = get_latest_punishment(username, reason)
+            add_punishment(
+                username, ip, reason,
+                prev["base_days"],          # same base
+                0,                          # ⬅ NO points added
+                prev["multiplier"],
+                prev["total_points_at_ban"]
+            )
+            # no log_infraction → we don’t want decay/points
+        else:
+            stage    = get_user_stage(username, reason)
+            template = get_catalog_punishment(reason, stage)
+            add_punishment(
+                username, ip, reason,
+                template["amount"],
+                template["points"],
+                multiplier,
+                decayed_points
+            )
+            log_infraction(username, template["points"], reason)
 
-    forum_channel = bot.get_channel(THREAD_CHANNEL_ID)
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 5.  Build & send thread + admin command
+    # ─────────────────────────────────────────────────────────────────────────────
+    forum_channel = interaction.client.get_channel(THREAD_CHANNEL_ID)
     if forum_channel is None:
-        forum_channel = await bot.fetch_channel(THREAD_CHANNEL_ID)
-
+        forum_channel = await interaction.client.fetch_channel(THREAD_CHANNEL_ID)
     if not isinstance(forum_channel, discord.ForumChannel):
-        print("❌ Forum channel not found or incorrect type.")
+        await interaction.followup.send("❌ Forum channel not found.", ephemeral=True)
         return
 
-    moderator = interaction.user.mention
-    mod_name = interaction.user.display_name
     reason_list = ", ".join(reasons)
+    moderator   = interaction.user.mention
+    mod_name    = interaction.user.display_name
+    mode_tag    = " (ban avoided)" if avoid_mode else ""
 
-    message = (
-        f"**IP Address:** {ip}\n"
-        f"**Reasons:** {reason_list}\n\n"
-        f"**Base Duration Sum:** {total_amount} {unit}\n"
-        f"**Multiplier Applied:** x{multiplier:.2f}\n\n"
-        f"**Points Added:** {total_points}  |  **Decayed Total:** {decayed_points}\n\n"
-        f"**Final Duration:** `{final_duration_string}`\n"
-        f"**Ban Ends:** <t:{unix_timestamp}:F>\n\n"
+    embed_desc = (
+        f"**IP:** `{ip}`\n"
+        f"**Reasons{mode_tag}:** {reason_list}\n"
+        f"**Duration:** `{final_duration_string}`\n"
+        f"**Ends:** <t:{unix_ts}:F>\n"
         f"**Issued By:** {moderator} ({mod_name})"
     )
+
+    message = f"**Punishment Record**\n\n{embed_desc}"
 
     thread = discord.utils.get(forum_channel.threads, name=username)
     if thread:
         await thread.send(message, silent=True)
-        thread_link = thread.id
     else:
         thread = await forum_channel.create_thread(
             name=username,
@@ -150,29 +229,23 @@ async def process_ban(interaction, reasons, username, ip):
             reason="Punishment issued",
             allowed_mentions=discord.AllowedMentions.none()
         )
-        thread_link = thread.thread.id
 
-    link = f"https://discord.com/channels/{interaction.guild_id}/{thread_link}"
-
-    cmd = f"$admin banip {ip} \"{username}\" \"{reason_list}\" {final_duration}"
+    # admin bot command (send even for avoid‑ban, same duration)
     try:
-        admin_bot_channel = await bot.fetch_channel(ADMIN_BOT_CHANNEL_ID)
-        print(f"[Debug] Fetched admin channel: {admin_bot_channel}")
-        await admin_bot_channel.send(cmd)
-        print(f"📨 Sent banip command: {cmd}")
-    except Exception as e:
-        print(f"❌ Failed to send admin command: {e}")
-
-    try:
-        await interaction.followup.send(
-            f"""```ansi
-[2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list}[0m[2;34m[0m
-```
-"""
-            f"**[View punishment thread]({link})**"
+        admin_chan = await interaction.client.fetch_channel(ADMIN_BOT_CHANNEL_ID)
+        await admin_chan.send(
+            f"$admin banip {ip} \"{username}\" \"{reason_list}{mode_tag}\" {final_duration}"
         )
-    except discord.errors.NotFound:
-        print("⚠️ Could not send followup message — interaction expired.")
+    except Exception as e:
+        print("❌ Failed to send admin command:", e)
+
+    # moderator feedback
+    await interaction.followup.send(
+        f"✅ **{username}** re‑banned for `{final_duration_string}` "
+        f"({'Ban Avoid' if avoid_mode else 'New Ban'})\n"
+        f"[[Thread]]({thread.jump_url})",
+        ephemeral=True
+    )
 
 
 ALLOWED_CHANNELS: set[int] = {
@@ -183,6 +256,7 @@ def in_mod_channel():
     async def predicate(interaction: discord.Interaction):
         return interaction.channel_id == ADMIN_BOT_CHANNEL_ID
     return app_commands.check(predicate)
+
 
 def in_allowed_channel(inter: discord.Interaction):
     cid = inter.channel_id
