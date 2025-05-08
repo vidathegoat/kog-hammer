@@ -22,12 +22,6 @@ VERSION = "Version 1.1.2"
 # ======================================================================================================================
 
 
-def in_mod_channel():
-    async def predicate(interaction: discord.Interaction):
-        return interaction.channel_id == ADMIN_BOT_CHANNEL_ID
-    return app_commands.check(predicate)
-
-
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
@@ -184,6 +178,11 @@ async def process_ban(interaction, reasons, username, ip):
 ALLOWED_CHANNELS: set[int] = {
     ADMIN_BOT_CHANNEL_ID,
 }
+
+def in_mod_channel():
+    async def predicate(interaction: discord.Interaction):
+        return interaction.channel_id == ADMIN_BOT_CHANNEL_ID
+    return app_commands.check(predicate)
 
 def in_allowed_channel(inter: discord.Interaction):
     cid = inter.channel_id
