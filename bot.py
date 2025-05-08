@@ -2,6 +2,7 @@ import discord
 from math import log2
 from discord.ext import commands
 from discord import app_commands
+from discord.app_commands import CheckFailure
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from db import (
@@ -11,16 +12,13 @@ from db import (
     get_catalog_punishment,
     fetch_user_infractions,
     calculate_total_decayed_points,
-    log_infraction,
-    get_latest_punishment
+    log_infraction
 )
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-
-VERSION = "Version 1.2.1"
-
+VERSION = "Version 1.1.5"
 # ======================================================================================================================
 
 
@@ -41,7 +39,7 @@ async def on_ready():
         print(f"⚠️  **Error** syncing commands: {e}")
 
 class PunishmentSelect(discord.ui.Select):
-    def __init__(self, punishments, username, ip, is_avoid):
+    def __init__(self, punishments, username, ip):
         MAX_LENGTH = 100
 
         options = []
@@ -52,9 +50,6 @@ class PunishmentSelect(discord.ui.Select):
             if reason in seen_reasons:
                 continue
             seen_reasons.add(reason)
-
-            if is_avoid and reason.lower() == "avoid":
-                continue
 
             label = reason[:90] + "..." if len(reason) > MAX_LENGTH else reason
             value = reason[:MAX_LENGTH]
@@ -69,47 +64,36 @@ class PunishmentSelect(discord.ui.Select):
         )
         self.username = username
         self.ip = ip
-        self.is_avoid = is_avoid
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        await process_ban(interaction, self.values, self.username, self.ip, self.is_avoid)
+        await process_ban(interaction, self.values, self.username, self.ip)
 
 class PunishmentSelectView(discord.ui.View):
-    def __init__(self, punishments, username, ip, is_avoid):
+    def __init__(self, punishments, username, ip):
         super().__init__(timeout=None)
-        self.add_item(PunishmentSelect(punishments, username, ip, is_avoid))
+        self.add_item(PunishmentSelect(punishments, username, ip))
 
-async def process_ban(interaction, reasons, username, ip, is_avoid):
+async def process_ban(interaction, reasons, username, ip):
     total_amount = 0
     total_points = 0
     unit = "days"
 
-    now = datetime.now(ZoneInfo("America/New_York"))
+    for reason in reasons:
+        stage = get_user_stage(username, reason)
+        template = get_catalog_punishment(reason, stage)
+        if not template:
+            await interaction.followup.send(f"⚠️ No template found for `{reason}` at stage {stage}.", ephemeral=True)
+            return
+        total_amount += template['amount']
+        total_points += template['points']
+        unit = template.get('unit', unit)
 
-    if is_avoid:
-        for reason in reasons:
-            prev_punishment = get_latest_punishment(username, reason)
-            if not prev_punishment:
-                await interaction.followup.send(f"⚠️ No prior punishment found for `{reason}` to reapply.", ephemeral=True)
-                return
-            total_amount += prev_punishment['amount']
-            unit = prev_punishment.get('unit', unit)
-        multiplier = prev_punishment['multiplier']
-        decayed_points = prev_punishment['decayed_total']
-    else:
-        infractions = fetch_user_infractions(username)
-        decayed_points = calculate_total_decayed_points(infractions, now, test_mode=True)
-        multiplier = max(log2(decayed_points + 1), 1)
-        for reason in reasons:
-            stage = get_user_stage(username, reason)
-            template = get_catalog_punishment(reason, stage)
-            if not template:
-                await interaction.followup.send(f"⚠️ No template found for `{reason}` at stage {stage}.", ephemeral=True)
-                return
-            total_amount += template['amount']
-            total_points += template['points']
-            unit = template.get('unit', unit)
+    now = datetime.now(ZoneInfo("America/New_York"))
+    infractions = fetch_user_infractions(username)
+    decayed_points = calculate_total_decayed_points(infractions, now, test_mode=True)
+
+    multiplier = max(log2(decayed_points + 1), 1)
 
     unit_abbrev = {"minutes": "m", "hours": "h", "days": "d", "weeks": "w"}.get(unit, "d")
     final_duration_value = int(total_amount * multiplier)
@@ -126,14 +110,10 @@ async def process_ban(interaction, reasons, username, ip, is_avoid):
     unix_timestamp = int(ban_end.timestamp())
 
     for reason in reasons:
-        if not is_avoid:
-            stage = get_user_stage(username, reason)
-            template = get_catalog_punishment(reason, stage)
-            add_punishment(username, ip, reason, template['amount'], template['points'], multiplier, decayed_points)
-            log_infraction(username, template['points'], reason)
-        else:
-            prev = get_latest_punishment(username, reason)
-            add_punishment(username, ip, reason, prev['amount'], 0, prev['multiplier'], prev['decayed_total'])
+        stage = get_user_stage(username, reason)
+        template = get_catalog_punishment(reason, stage)
+        add_punishment(username, ip, reason, template['amount'], template['points'], multiplier, decayed_points)
+        log_infraction(username, template['points'], reason)
 
     forum_channel = bot.get_channel(THREAD_CHANNEL_ID)
     if forum_channel is None:
@@ -152,7 +132,7 @@ async def process_ban(interaction, reasons, username, ip, is_avoid):
         f"**Reasons:** {reason_list}\n\n"
         f"**Base Duration Sum:** {total_amount} {unit}\n"
         f"**Multiplier Applied:** x{multiplier:.2f}\n\n"
-        f"**Points Added:** {0 if is_avoid else total_points}  |  **Decayed Total:** {decayed_points}\n\n"
+        f"**Points Added:** {total_points}  |  **Decayed Total:** {decayed_points}\n\n"
         f"**Final Duration:** `{final_duration_string}`\n"
         f"**Ban Ends:** <t:{unix_timestamp}:F>\n\n"
         f"**Issued By:** {moderator} ({mod_name})"
@@ -177,6 +157,7 @@ async def process_ban(interaction, reasons, username, ip, is_avoid):
     cmd = f"$admin banip {ip} \"{username}\" \"{reason_list}\" {final_duration}"
     try:
         admin_bot_channel = await bot.fetch_channel(ADMIN_BOT_CHANNEL_ID)
+        print(f"[Debug] Fetched admin channel: {admin_bot_channel}")
         await admin_bot_channel.send(cmd)
         print(f"📨 Sent banip command: {cmd}")
     except Exception as e:
@@ -186,19 +167,34 @@ async def process_ban(interaction, reasons, username, ip, is_avoid):
         await interaction.followup.send(
             f"""```ansi
 [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list}[0m[2;34m[0m
-```"""
+```
+"""
             f"**[View punishment thread]({link})**"
         )
     except discord.errors.NotFound:
         print("⚠️ Could not send followup message — interaction expired.")
 
+
+ALLOWED_CHANNELS: set[int] = {
+    ADMIN_BOT_CHANNEL_ID,
+}
+
+def in_mod_channel():
+    async def predicate(interaction: discord.Interaction):
+        return interaction.channel_id == ADMIN_BOT_CHANNEL_ID
+    return app_commands.check(predicate)
+
+def in_allowed_channel(inter: discord.Interaction):
+    cid = inter.channel_id
+    # if the command was executed in a thread, also allow its parent
+    parent = getattr(inter.channel, "parent_id", None)
+    return cid in ALLOWED_CHANNELS or parent in ALLOWED_CHANNELS
+
+
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
-@app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user", avoid="Is this a ban avoid?")
-@app_commands.choices(avoid=[
-    app_commands.Choice(name="Yes (Avoid Ban)", value="true"),
-    app_commands.Choice(name="No", value="false")
-])
-async def banip(interaction: discord.Interaction, username: str, ip: str, avoid: app_commands.Choice[str]):
+@app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
+@in_mod_channel()
+async def banip(interaction: discord.Interaction, username: str, ip: str):
     try:
         await interaction.response.defer(ephemeral=True)
         print(f"[banip] Interaction deferred successfully for {username} @ {ip}")
@@ -209,15 +205,29 @@ async def banip(interaction: discord.Interaction, username: str, ip: str, avoid:
         print(f"[banip] ⚠️ Interaction expired or unknown for {username} @ {ip}")
         return
 
-    is_avoid = avoid.value == "true"
     punishment_options = get_all_punishment_options()
     print(f"[banip] Fetched punishment options: {len(punishment_options)} found")
 
     if punishment_options:
-        view = PunishmentSelectView(punishment_options, username, ip, is_avoid)
+        view = PunishmentSelectView(punishment_options, username, ip)
         await interaction.followup.send(content="", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
+
+from discord.app_commands import CheckFailure, AppCommandError
+
+@banip.error
+async def banip_error(interaction: discord.Interaction, error: AppCommandError):
+    """Runs only if banip raised an exception *before* it replied."""
+    if isinstance(error, CheckFailure):
+        # the channel gate failed
+        await interaction.response.send_message(
+            "❌ This command can only be used in <#{}>.".format(ADMIN_BOT_CHANNEL_ID),
+            ephemeral=True
+        )
+    else:
+        # re‑raise or log other kinds of errors
+        raise error
 
 
 bot.run(DISCORD_TOKEN)
