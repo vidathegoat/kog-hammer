@@ -96,6 +96,15 @@ class PunishmentSelect(discord.ui.Select):
         await interaction.response.defer(ephemeral=True)
         await process_ban(interaction, self.values, self.username, self.ip)
 
+        # ─── NEW: lock the UI so it can’t be used again ─────────────────
+        for child in self.view.children:  # disable every component
+            child.disabled = True
+
+        try:  # update the original message
+            await interaction.edit_original_response(view=self.view)
+        except discord.NotFound:  # message was deleted / timed‑out
+            pass
+
 class PunishmentSelectView(discord.ui.View):
     def __init__(self, punishments, username, ip):
         super().__init__(timeout=None)
