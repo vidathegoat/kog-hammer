@@ -4,26 +4,26 @@ from dateutil import parser
 
 supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def add_punishment(user_id, ip, reason, base_days, points, multiplier, total_points_at_ban):
-    final_duration = int(base_days * multiplier)
+def add_punishment(user_id, ip, reason,
+                   base_days, points, multiplier, total_pts_at_ban,
+                   *, explicit_stage: int | None = None):
 
-    current_stage = get_user_stage(user_id, reason)
-    current_stage = int(current_stage)
+    stage = (explicit_stage
+             if explicit_stage is not None
+             else get_user_stage(user_id, reason))
 
     data = {
         "user_id": user_id,
         "ip": ip,
         "reason": reason,
-        "base_days": int(base_days),
-        "points": int(points),
-        "multiplier": float(multiplier),
-        "final_duration": final_duration,
-        "stage": current_stage,
-        "total_points_at_ban": float(total_points_at_ban)
+        "base_days": base_days,
+        "points": points,
+        "multiplier": multiplier,
+        "final_duration": int(base_days * multiplier),
+        "stage": stage,
+        "total_points_at_ban": total_pts_at_ban,
     }
-
-    supabase_client.from_('punishments').insert(data).execute()
-    return final_duration
+    supabase_client.from_("punishments").insert(data).execute()
 
 def log_infraction(user_id, points, context, source="automated"):
     data = {

@@ -20,7 +20,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.9"
+VERSION = "Version 1.2.10"
 
 # ======================================================================================================================
 
@@ -38,6 +38,10 @@ def pick_unit(units: set[str]) -> str:
         if u in units:
             return u
     return "hours"
+
+def choose_largest_unit(u1: str, u2: str) -> str:
+    order = {"minutes": 0, "hours": 1, "days": 2, "weeks": 3}
+    return u1 if order[u1] >= order[u2] else u2
 # ─────────────────────────────────────────────────────────────────────────
 
 
@@ -118,7 +122,7 @@ async def process_ban(interaction, reasons, username, ip):
 
     if not reasons:
         await interaction.followup.send(
-            "⚠ Select at least one offence together with **Avoid Ban**.",
+            "⚠ Select at least one offence together with **Avoid Ban**.",
             ephemeral=True
         )
         return
@@ -130,12 +134,20 @@ async def process_ban(interaction, reasons, username, ip):
     reused_multiplier = 1
 
     # ── collect data offence by offence ──────────────────────────────────
-    for reason in reasons:
-        if avoid_mode:                                    # re‑apply previous ban
+    for reason in reasons:  # unchanged loop header
+        if avoid_mode:
             prev = get_latest_punishment(username, reason)
+            add_punishment(
+                username, ip, reason,
+                prev["base_days"],
+                0,  # no points
+                prev["multiplier"],
+                prev["total_points_at_ban"],
+                explicit_stage=prev["stage"]  # <-- keep SAME stage
+            )
             if not prev:
                 await interaction.followup.send(
-                    f"⚠ No previous ban found for **{reason}** – cannot avoid.",
+                    f"⚠ No previous ban found for **{reason}** – cannot avoid.",
                     ephemeral=True
                 )
                 return
@@ -150,7 +162,7 @@ async def process_ban(interaction, reasons, username, ip):
             tmpl  = get_catalog_punishment(reason, stage)
             if not tmpl:
                 await interaction.followup.send(
-                    f"⚠ No template for `{reason}` at stage {stage}.",
+                    f"⚠ No template for `{reason}` at stage {stage}.",
                     ephemeral=True
                 )
                 return
@@ -158,6 +170,7 @@ async def process_ban(interaction, reasons, username, ip):
             seen_units.add(tmpl["unit"])
             total_hours  += hours_from(tmpl["amount"], tmpl["unit"])
             total_points += tmpl["points"]
+            unit = choose_largest_unit(unit, tmpl["unit"])
 
     # ── multiplier ───────────────────────────────────────────────────────
     if avoid_mode or len(reasons) == 1:        # ← multiplier **disabled** for single‑offence bans
