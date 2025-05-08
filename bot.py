@@ -19,7 +19,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 # ======================================================================================================================
 
-VERSION = "Version 1.0.2"
+VERSION = "Version 1.2.1"
 
 # ======================================================================================================================
 
@@ -218,5 +218,6 @@ async def banip(interaction: discord.Interaction, username: str, ip: str, avoid:
         await interaction.followup.send(content="", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
+
 
 bot.run(DISCORD_TOKEN)
