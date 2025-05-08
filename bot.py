@@ -2,6 +2,7 @@ import discord
 from math import log2
 from discord.ext import commands
 from discord import app_commands
+from discord.app_commands import CheckFailure
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from db import (
@@ -17,7 +18,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 1.0.3"
+VERSION = "Version 1.1.1"
 # ======================================================================================================================
 
 
@@ -179,6 +180,18 @@ async def process_ban(interaction, reasons, username, ip):
     except discord.errors.NotFound:
         print("⚠️ Could not send followup message — interaction expired.")
 
+
+ALLOWED_CHANNELS: set[int] = {
+    ADMIN_BOT_CHANNEL_ID,
+}
+
+def in_allowed_channel(inter: discord.Interaction):
+    cid = inter.channel_id
+    # if the command was executed in a thread, also allow its parent
+    parent = getattr(inter.channel, "parent_id", None)
+    return cid in ALLOWED_CHANNELS or parent in ALLOWED_CHANNELS
+
+
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 @in_mod_channel()
@@ -201,5 +214,21 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
         await interaction.followup.send(content="", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
+
+from discord.app_commands import CheckFailure, AppCommandError
+
+@banip.error
+async def banip_error(interaction: discord.Interaction, error: AppCommandError):
+    """Runs only if banip raised an exception *before* it replied."""
+    if isinstance(error, CheckFailure):
+        # the channel gate failed
+        await interaction.response.send_message(
+            "[banip] ❌ This command can only be used in <#{}>.".format(ALLOWED_CHANNELS),
+            ephemeral=True
+        )
+    else:
+        # re‑raise or log other kinds of errors
+        raise error
+
 
 bot.run(DISCORD_TOKEN)
