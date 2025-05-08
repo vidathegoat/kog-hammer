@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 
 # ======================================================================================================================
-VERSION = "Version 0.11.10"
+VERSION = "Version 0.12.1"
 # ======================================================================================================================
 
 
@@ -30,55 +30,15 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 @bot.event
 async def on_ready():
     await bot.change_presence(activity=discord.Game(name=f"on {VERSION}"))
-    print(f"🔨🛡️  {bot.user} is now online and watching over the realm! [{VERSION}]")
+    print(f"🔨🗡️  {bot.user} is now online and watching over the realm! [{VERSION}]")
     try:
         synced = await bot.tree.sync()
         print(f"⚔️🔁  Synced: {len(synced)} slash command ready for battle!")
     except Exception as e:
         print(f"⚠️  **Error** syncing commands: {e}")
 
-class ConfirmPunishmentButton(discord.ui.Button):
-    def __init__(self):
-        super().__init__(label="Confirm", style=discord.ButtonStyle.green)
-
-    async def callback(self, interaction: discord.Interaction):
-        print("[Confirm] Confirm button clicked.")
-        view: PunishmentSelectView = self.view
-
-        if view.confirmed:
-            print("[Confirm] Already confirmed.")
-            try:
-                await interaction.response.send_message("⚠️ Punishment already confirmed.", ephemeral=True)
-            except discord.errors.InteractionResponded:
-                await interaction.followup.send("⚠️ Punishment already confirmed.", ephemeral=True)
-            return
-
-        view.confirmed = True
-
-        try:
-            await interaction.followup.send("⚔️ Applying punishment...", ephemeral=True)
-        except discord.errors.NotFound:
-            print("⚠️ Could not send progress update – interaction expired.")
-
-        print("[Confirm] Calling process_ban...")
-        try:
-            await process_ban(interaction, view.selected_reasons, view.username, view.ip)
-            print("[Confirm] process_ban complete.")
-        except Exception as e:
-            print(f"⚠️ Exception during process_ban: {e}")
-            return
-
-        for child in view.children:
-            child.disabled = True
-
-        try:
-            await interaction.edit_original_response(view=view)
-        except discord.NotFound:
-            print("⚠️ Could not update original message — it may have been deleted.")
-
-
 class PunishmentSelect(discord.ui.Select):
-    def __init__(self, punishments):
+    def __init__(self, punishments, username, ip):
         MAX_LENGTH = 100
 
         options = []
@@ -101,24 +61,17 @@ class PunishmentSelect(discord.ui.Select):
             max_values=len(options),
             options=options
         )
+        self.username = username
+        self.ip = ip
 
     async def callback(self, interaction: discord.Interaction):
-        view: PunishmentSelectView = self.view
-        view.selected_reasons = self.values
-
-        if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True)
-
+        await interaction.response.defer(ephemeral=True)
+        await process_ban(interaction, self.values, self.username, self.ip)
 
 class PunishmentSelectView(discord.ui.View):
     def __init__(self, punishments, username, ip):
         super().__init__(timeout=None)
-        self.username = username
-        self.ip = ip
-        self.selected_reasons = []
-        self.confirmed = False
-        self.add_item(PunishmentSelect(punishments))
-        self.add_item(ConfirmPunishmentButton())
+        self.add_item(PunishmentSelect(punishments, username, ip))
 
 async def process_ban(interaction, reasons, username, ip):
     total_amount = 0
@@ -207,25 +160,15 @@ async def process_ban(interaction, reasons, username, ip):
         print(f"📨 Sent banip command: {cmd}")
 
     try:
-        if not interaction.response.is_done():
-            await interaction.response.send_message(f"""```ansi
-            [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list}[0m[2;34m[0m
-            ```
-            """
-                f"**[View punishment thread]({link})**"
-            )
-        else:
-            await interaction.followup.send(
-                f"""```ansi
-            [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list}[0m[2;34m[0m
-            ```
-            """
-                f"**[View punishment thread]({link})**"
-            )
+        await interaction.followup.send(
+            f"""```ansi
+[2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list}[0m[2;34m[0m
+```
+"""
+            f"**[View punishment thread]({link})**"
+        )
     except discord.errors.NotFound:
         print("⚠️ Could not send followup message — interaction expired.")
-
-
 
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
@@ -248,6 +191,5 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
         await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
-
 
 bot.run(DISCORD_TOKEN)
