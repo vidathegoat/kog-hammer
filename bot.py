@@ -102,25 +102,27 @@ class PunishmentSelectView(discord.ui.View):
         self.add_item(PunishmentSelect(punishments, username, ip))
 
 async def process_ban(interaction, reasons, username, ip):
-    """Apply a normal ban **or** re‑apply a previous ban if '__AVOID__' is present."""
-    # ── split special flag ───────────────────────────────────────────────
+    """Normal ban **or** re‑ban when '__AVOID__' is present."""
+    # ── split the special flag ───────────────────────────────────────────
     avoid_mode = "__AVOID__" in reasons
     reasons    = [r for r in reasons if r != "__AVOID__"]
+
     if not reasons:
         await interaction.followup.send(
-            "⚠ Select at least one offence together with **Avoid Ban**.",
+            "⚠ Select at least one offence together with **Avoid Ban**.",
             ephemeral=True
         )
         return
 
-    total_hours       = 0.0        # always accumulate in hours
+    # helpers / accumulators
+    total_hours       = 0.0
     total_points      = 0
     seen_units        = set()
     reused_multiplier = 1
 
-    # ── gather data offence by offence ───────────────────────────────────
+    # ── collect data offence by offence ──────────────────────────────────
     for reason in reasons:
-        if avoid_mode:                                    # re‑apply
+        if avoid_mode:                                    # re‑apply previous ban
             prev = get_latest_punishment(username, reason)
             if not prev:
                 await interaction.followup.send(
@@ -134,23 +136,24 @@ async def process_ban(interaction, reasons, username, ip):
             total_hours       += hours_from(prev["base_days"], unit)
             reused_multiplier  = max(reused_multiplier, prev["multiplier"])
 
-        else:                                             # fresh ban
+        else:                                             # fresh catalogue ban
             stage = get_user_stage(username, reason)
             tmpl  = get_catalog_punishment(reason, stage)
             if not tmpl:
                 await interaction.followup.send(
-                    f"⚠ No template for `{reason}` at stage {stage}.",
+                    f"⚠ No template for `{reason}` at stage {stage}.",
                     ephemeral=True
                 )
                 return
+
             seen_units.add(tmpl["unit"])
             total_hours  += hours_from(tmpl["amount"], tmpl["unit"])
             total_points += tmpl["points"]
 
-    # ── multiplier & final duration (in hours) ───────────────────────────
-    if avoid_mode:
-        multiplier     = reused_multiplier
-        decayed_points = 0
+    # ── multiplier ───────────────────────────────────────────────────────
+    if avoid_mode or len(reasons) == 1:        # ← multiplier **disabled** for single‑offence bans
+        multiplier     = reused_multiplier if avoid_mode else 1
+        decayed_points = 0                 if avoid_mode else 0  # just display; unused
     else:
         now            = datetime.now(ZoneInfo("America/New_York"))
         decayed_points = calculate_total_decayed_points(
@@ -160,41 +163,17 @@ async def process_ban(interaction, reasons, username, ip):
 
     final_hours          = int(total_hours * multiplier)
 
-    # ── choose display unit & build printable values ─────────────────────
+    # ── display values ───────────────────────────────────────────────────
     unit_display         = pick_unit(seen_units)
-    final_value_display  = round(final_hours / UNIT_TO_HOURS[unit_display])
-    unit_abbrev          = unit_display[0]          # w|d|h|m
-    final_duration       = f"{final_value_display}{unit_abbrev}"
-    final_duration_string= f"{final_value_display} {unit_display}"
+    value_display        = int(final_hours / UNIT_TO_HOURS[unit_display])
+    unit_abbrev          = unit_display[0]       # w|d|h|m
+    final_duration       = f"{value_display}{unit_abbrev}"
+    final_duration_str   = f"{value_display} {unit_display}"
 
     # timestamps
-    now      = datetime.now(ZoneInfo("America/New_York"))
-    ban_end  = now + timedelta(hours=final_hours)
-    unix_ts  = int(ban_end.timestamp())
-
-    # ── DB writes ────────────────────────────────────────────────────────
-    for reason in reasons:
-        if avoid_mode:
-            prev = get_latest_punishment(username, reason)
-            add_punishment(
-                username, ip, reason,
-                prev["base_days"],
-                0,                       # no points
-                prev["multiplier"],
-                prev["total_points_at_ban"]
-            )
-        else:
-            stage = get_user_stage(username, reason)
-            tmpl  = get_catalog_punishment(reason, stage)
-            add_punishment(
-                username, ip, reason,
-                tmpl["amount"],
-                tmpl["points"],
-                multiplier,
-                decayed_points
-            )
-            log_infraction(username, tmpl["points"], reason)
-
+    now     = datetime.now(ZoneInfo("America/New_York"))
+    ban_end = now + timedelta(hours=final_hours)
+    unix_ts = int(ban_end.timestamp())
     # ── build thread text exactly like before (only vars changed) ───────
     forum_channel = interaction.client.get_channel(THREAD_CHANNEL_ID) \
                     or await interaction.client.fetch_channel(THREAD_CHANNEL_ID)
@@ -215,7 +194,7 @@ async def process_ban(interaction, reasons, username, ip):
         
         f"**Points Added:** {total_points}  |  **Decayed Total:** {decayed_points}\n\n"
         
-        f"**Final Duration:** `{final_duration_string}`\n"
+        f"**Final Duration:** `{final_duration_str}`\n"
         f"**Ends:** <t:{unix_ts}:F>\n"
         f"**Issued By:** {interaction.user.mention} [{interaction.user.display_name}]"
     )
@@ -248,7 +227,7 @@ async def process_ban(interaction, reasons, username, ip):
     # moderator feedback
     await interaction.followup.send(
         f"""```ansi
-[2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_string}[0m[2;34m[0m due to [2;34m[1;34m{reason}[0m[2;34m[0m
+[2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_str}[0m[2;34m[0m due to [2;34m[1;34m{reason}[0m[2;34m[0m
 ```\n"""
     f"**[View punishment thread]({link})**"
     )
