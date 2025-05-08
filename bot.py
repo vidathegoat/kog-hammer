@@ -20,7 +20,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.2"
+VERSION = "Version 1.2.3"
 
 # ======================================================================================================================
 
@@ -87,31 +87,27 @@ class PunishmentSelectView(discord.ui.View):
 
 async def process_ban(interaction, reasons, username, ip):
     """Apply a normal ban **or** re‑apply a previous ban if '__AVOID__' is present."""
-    # ─────────────────────────────────────────────────────────────────────────────
-    # 1.  Split off the special option
-    # ─────────────────────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
     avoid_mode = "__AVOID__" in reasons
-    reasons    = [r for r in reasons if r != "__AVOID__"]          # only real offences
+    reasons    = [r for r in reasons if r != "__AVOID__"]
 
-    if not reasons:            # we always need at least one real reason
+    if not reasons:
         await interaction.followup.send(
             "⚠ Select at least one offence together with **Avoid Ban**.", ephemeral=True
         )
         return
 
-    # ─────────────────────────────────────────────────────────────────────────────
-    # 2.  Fetch catalogue / previous‑ban data
-    # ─────────────────────────────────────────────────────────────────────────────
-    total_amount     = 0            # raw catalogue amount sum (normal path)
-    total_points     = 0
-    unit             = "days"
-    reused_multiplier = 1           # largest multiplier reused in avoid mode
-    total_hours      = 0            # we’ll sum everything in hours for avoid
-
+    # helper
     def hours_from(amount, unit):
         return amount * {"minutes": 1/60, "hours": 1, "days": 24, "weeks": 168}[unit]
 
-    if avoid_mode:
+    total_amount      = 0
+    total_points      = 0
+    unit              = "days"          # default / will be replaced
+    reused_multiplier = 1
+    total_hours       = 0
+
+    if avoid_mode:                                   # ← PATCHED SECTION
         for reason in reasons:
             prev = get_latest_punishment(username, reason)
             if not prev:
@@ -121,16 +117,20 @@ async def process_ban(interaction, reasons, username, ip):
                 )
                 return
 
-            reused_multiplier  = max(reused_multiplier, prev["multiplier"])
-            total_hours       += hours_from(prev["base_days"], prev["unit"])
-            unit               = prev["unit"]        # keep for display later
+            # ── NEW:  pull unit safely ────────────────────────────────
+            stage = get_user_stage(username, reason)
+            tmpl  = get_catalog_punishment(reason, stage)
+            prev_unit = prev.get("unit") or tmpl["unit"]      # fallback to catalogue
+            # ───────────────────────────────────────────────────────────
 
-        # durations
-        duration_converted   = total_hours           # already in hours
+            reused_multiplier  = max(reused_multiplier, prev["multiplier"])
+            total_hours       += hours_from(prev["base_days"], prev_unit)
+            unit               = prev_unit                    # for display
+
+        duration_converted   = total_hours
         final_duration_value = int(total_hours)
         decayed_points       = 0
         total_points         = 0
-
     else:
         # ───────────────────────────── normal *new* ban ─────────────────────────
         for reason in reasons:
@@ -221,6 +221,8 @@ async def process_ban(interaction, reasons, username, ip):
     thread = discord.utils.get(forum_channel.threads, name=username)
     if thread:
         await thread.send(message, silent=True)
+
+        thread_link = thread.id
     else:
         thread = await forum_channel.create_thread(
             name=username,
@@ -230,6 +232,10 @@ async def process_ban(interaction, reasons, username, ip):
             allowed_mentions=discord.AllowedMentions.none()
         )
 
+        thread_link = thread.thread.id
+
+    link = f"https://discord.com/channels/{interaction.guild_id}/{thread_link}"
+
     # admin bot command (send even for avoid‑ban, same duration)
     try:
         admin_chan = await interaction.client.fetch_channel(ADMIN_BOT_CHANNEL_ID)
@@ -237,14 +243,14 @@ async def process_ban(interaction, reasons, username, ip):
             f"$admin banip {ip} \"{username}\" \"{reason_list}{mode_tag}\" {final_duration}"
         )
     except Exception as e:
-        print("❌ Failed to send admin command:", e)
+        print("❌ Failed to send admin command:", e)
 
     # moderator feedback
     await interaction.followup.send(
-        f"✅ **{username}** re‑banned for `{final_duration_string}` "
-        f"({'Ban Avoid' if avoid_mode else 'New Ban'})\n"
-        f"[[Thread]]({thread.jump_url})",
-        ephemeral=True
+        f"""```ansi
+        [2;34m[1;34m{username}[0m[2;34m[0m has been punished for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reasons}[0m[2;34m[0m
+        ```\n"""
+        f"**[View punishment thread]({link})**"
     )
 
 
