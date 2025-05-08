@@ -17,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 1.0.1"
+VERSION = "Version 1.0.2"
 # ======================================================================================================================
 
 
@@ -189,9 +189,17 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
     punishment_options = get_all_punishment_options()
     print(f"[banip] Fetched punishment options: {len(punishment_options)} found")
 
-    if punishment_options:
-        view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.followup.send(content="", view=view, ephemeral=True)
+    try:
+        if punishment_options:
+            await interaction.followup.send(
+                content="Please select a punishment template:",
+                view=PunishmentSelectView(punishment_options, username, ip),
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send("No punishment templates found.", ephemeral=True)
+    except discord.HTTPException as e:
+        print(f"❌ Failed to send followup with view: {e}")
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
