@@ -18,7 +18,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 1.1.4"
+VERSION = "Version 1.1.5"
 # ======================================================================================================================
 
 
@@ -222,7 +222,7 @@ async def banip_error(interaction: discord.Interaction, error: AppCommandError):
     if isinstance(error, CheckFailure):
         # the channel gate failed
         await interaction.response.send_message(
-            "[banip] ❌ This command can only be used in <#{}>.".format(ADMIN_BOT_CHANNEL_ID),
+            "❌ This command can only be used in <#{}>.".format(ADMIN_BOT_CHANNEL_ID),
             ephemeral=True
         )
     else:
