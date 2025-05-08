@@ -17,8 +17,14 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 1.0.1"
+VERSION = "Version 1.0.3"
 # ======================================================================================================================
+
+
+def in_mod_channel():
+    async def predicate(interaction: discord.Interaction):
+        return interaction.channel_id == ADMIN_BOT_CHANNEL_ID
+    return app_commands.check(predicate)
 
 
 intents = discord.Intents.default()
@@ -175,6 +181,7 @@ async def process_ban(interaction, reasons, username, ip):
 
 @bot.tree.command(name="banip", description="Ban a user using a points-based system.")
 @app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
+@in_mod_channel()
 async def banip(interaction: discord.Interaction, username: str, ip: str):
     try:
         await interaction.response.defer(ephemeral=True)
