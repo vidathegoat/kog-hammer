@@ -191,7 +191,7 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
 
     if punishment_options:
         view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.followup.send("Please select a punishment template:", view=view, ephemeral=True)
+        await interaction.followup.send(content="", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
