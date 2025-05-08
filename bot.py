@@ -20,7 +20,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.6"
+VERSION = "Version 1.2.7"
 
 # ======================================================================================================================
 
@@ -124,7 +124,8 @@ async def process_ban(interaction, reasons, username, ip):
             prev = get_latest_punishment(username, reason)
             if not prev:
                 await interaction.followup.send(
-                    f"⚠ l=True
+                    f"⚠ No previous ban found for **{reason}** – cannot avoid.",
+                    ephemeral=True
                 )
                 return
 
