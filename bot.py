@@ -265,42 +265,57 @@ def in_allowed_channel(inter: discord.Interaction):
     return cid in ALLOWED_CHANNELS or parent in ALLOWED_CHANNELS
 
 
-@bot.tree.command(name="banip", description="Ban a user using a points-based system.")
-@app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
+# ──────────────────────────────────────────────────────────────────────────────
+#  /banip  <username>  <ipv4>
+#    • gated to the moderator channel via @in_mod_channel()
+#    • immediately defers → interaction stays alive 15 min
+#    • shows only the punishment‑select View (no extra text)
+# ──────────────────────────────────────────────────────────────────────────────
+from discord.app_commands import CheckFailure, AppCommandError
+
+@bot.tree.command(
+    name="banip",
+    description="Ban a user using the points‑based system."
+)
+@app_commands.describe(
+    username="Username of the user to ban",
+    ip="IPv4 address of the user"
+)
 @in_mod_channel()
 async def banip(interaction: discord.Interaction, username: str, ip: str):
     try:
+        # keep the interaction alive so the View can answer later
         await interaction.response.defer(ephemeral=True)
-        print(f"[banip] Interaction deferred successfully for {username} @ {ip}")
+        print(f"[banip] Deferred for {username} @ {ip}")
     except discord.errors.InteractionResponded:
-        print(f"[banip] ⚠️ Interaction already responded to for {username} @ {ip}")
+        print(f"[banip] Interaction already responded ({username})")
         return
     except discord.errors.NotFound:
-        print(f"[banip] ⚠️ Interaction expired or unknown for {username} @ {ip}")
+        print(f"[banip] Interaction expired / unknown ({username})")
         return
 
+    # pull catalogue rows once
     punishment_options = get_all_punishment_options()
-    print(f"[banip] Fetched punishment options: {len(punishment_options)} found")
-
-    if punishment_options:
-        view = PunishmentSelectView(punishment_options, username, ip)
-        await interaction.followup.send(content="", view=view, ephemeral=True)
-    else:
+    if not punishment_options:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
+        return
 
-from discord.app_commands import CheckFailure, AppCommandError
+    # attach the single‑dropdown View (no leading text)
+    view = PunishmentSelectView(punishment_options, username, ip)
+    await interaction.followup.send(content="", view=view, ephemeral=True)
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Error handler – runs only if *banip* raised **before** it replied / deferred
+# ──────────────────────────────────────────────────────────────────────────────
 @banip.error
 async def banip_error(interaction: discord.Interaction, error: AppCommandError):
-    """Runs only if banip raised an exception *before* it replied."""
     if isinstance(error, CheckFailure):
-        # the channel gate failed
         await interaction.response.send_message(
-            "[banip] ❌ This command can only be used in <#{}>.".format(ADMIN_BOT_CHANNEL_ID),
+            f"❌ This command can only be used in <#{ADMIN_BOT_CHANNEL_ID}>.",
             ephemeral=True
         )
     else:
-        # re‑raise or log other kinds of errors
         raise error
 
 
