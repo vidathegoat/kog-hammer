@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.13"
+VERSION = "Version 1.2.14"
 
 # ======================================================================================================================
 
@@ -112,7 +112,7 @@ class PunishmentAvoidSelect(discord.ui.Select):
 
 
         super().__init__(
-            placeholder="Select a reason to re-apply",
+            placeholder="Select reason(s) to re-apply",
             min_values=1,
             max_values=len(options),
             options=options
