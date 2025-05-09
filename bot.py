@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.8"
+VERSION = "Version 1.2.9"
 
 # ======================================================================================================================
 
@@ -132,8 +132,11 @@ class PunishmentAvoidSelect(discord.ui.Select):
 
         # Compute ban time
         now = datetime.now(ZoneInfo("America/New_York"))
-        unit = prev.get("unit", "days")
-        base = prev["amount"]
+        unit = prev.get("unit")
+        if not unit:
+            catalog = get_catalog_punishment(prev["reason"], prev["stage"])
+            unit = catalog["unit"] if catalog else "days"
+        base = prev.get("amount") or prev.get("base_days")  # use fallback
         hours = base * {"minutes": 1 / 60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
         end = now + timedelta(hours=hours)
         unix_timestamp = int(end.timestamp())
