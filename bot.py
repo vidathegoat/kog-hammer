@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.14"
+VERSION = "Version 1.2.15"
 
 # ======================================================================================================================
 
@@ -121,59 +121,88 @@ class PunishmentAvoidSelect(discord.ui.Select):
         self.ip = ip
 
     async def callback(self, interaction: discord.Interaction):
-        reason = self.values[0]
-        prev = get_latest_punishment(self.username, reason)
+        total_hours = 0
+        reason_list = []
+        final_duration_display = ""
+        max_multiplier = 1
+        total_points_at_ban = 0
 
-        if not prev:
-            await interaction.response.send_message(
-                f"⚠️ No previous punishment found for `{reason}`.", ephemeral=True
+        for reason in self.values:
+            prev = get_latest_punishment(self.username, reason)
+            if not prev:
+                await interaction.response.send_message(
+                    f"⚠️ No previous punishment found for `{reason}`.",
+                    ephemeral=True
+                )
+                return
+
+            unit = prev.get("unit")
+            if not unit:
+                catalog = get_catalog_punishment(prev["reason"], prev["stage"])
+                unit = catalog["unit"] if catalog else "days"
+
+            base = prev.get("amount") or prev.get("base_days")
+            multiplier = prev.get("multiplier", 1)
+            max_multiplier = max(max_multiplier, multiplier)
+            total_points_at_ban = max(total_points_at_ban, prev.get("total_points_at_ban", 0))
+
+            hours = base * {"minutes": 1 / 60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
+            total_hours += hours
+            reason_list.append(reason)
+
+            # Log each one individually
+            add_punishment(
+                self.username,
+                self.ip,
+                reason,
+                base,
+                0,  # no points for avoid
+                multiplier,
+                prev.get("total_points_at_ban", 0),
+                explicit_stage=prev["stage"]
             )
-            return
 
-        # Compute ban time
+        # Ban timing
         now = datetime.now(ZoneInfo("America/New_York"))
-        unit = prev.get("unit")
-        if not unit:
-            catalog = get_catalog_punishment(prev["reason"], prev["stage"])
-            unit = catalog["unit"] if catalog else "days"
-        base = prev.get("amount") or prev.get("base_days")  # use fallback
-        hours = base * {"minutes": 1 / 60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
-        end = now + timedelta(hours=hours)
-        unix_timestamp = int(end.timestamp())
-        final_duration = f"{int(base)}{unit[0]}"
-        final_duration_value = int(base)
-        final_duration_string = f"{final_duration_value} {unit}"
+        ban_end = now + timedelta(hours=total_hours)
+        unix_timestamp = int(ban_end.timestamp())
 
-        # Apply punishment
-        add_punishment(
-            self.username,
-            self.ip,
-            reason,
-            base,
-            0,
-            prev["multiplier"],
-            prev["total_points_at_ban"],
-            explicit_stage=prev["stage"]
-        )
+        # Choose display unit
+        if total_hours >= 168:
+            final_duration_value = int(total_hours / 168)
+            unit = "weeks"
+        elif total_hours >= 24:
+            final_duration_value = int(total_hours / 24)
+            unit = "days"
+        elif total_hours >= 1:
+            final_duration_value = int(total_hours)
+            unit = "hours"
+        else:
+            final_duration_value = int(total_hours * 60)
+            unit = "minutes"
 
-        # Build thread text
+        unit_abbrev = unit[0]
+        final_duration = f"{final_duration_value}{unit_abbrev}"
+        final_duration_display = f"{final_duration_value} {unit}"
+        reason_string = ", ".join(reason_list)
+
+        # Thread message
         moderator = interaction.user.mention
         mod_name = interaction.user.display_name
-        reason_list = reason
         message = (
             f"**IP Address:** {self.ip}\n"
-            f"**Reasons:** {reason_list} [AVOID]\n\n"
-            f"**Base Duration:** {base} {unit}\n"
-            f"**Multiplier Applied:** x{prev['multiplier']:.2f}\n\n"
-            f"**Points Added:** 0  |  **Decayed Total:** {prev['total_points_at_ban']}\n\n"
-            f"**Final Duration:** `{final_duration_string}`\n"
+            f"**Reasons:** {reason_string} [AVOID]\n\n"
+            f"**Base Duration Sum:** {round(total_hours, 2)} hours\n"
+            f"**Multiplier Applied:** x{max_multiplier:.2f}\n\n"
+            f"**Points Added:** 0  |  **Decayed Total:** {total_points_at_ban}\n\n"
+            f"**Final Duration:** `{final_duration_display}`\n"
             f"**Ban Ends:** <t:{unix_timestamp}:F>\n\n"
             f"**Issued By:** {moderator} ({mod_name})"
         )
 
-        # Send to forum
-        forum_channel = interaction.client.get_channel(THREAD_CHANNEL_ID) \
-                        or await interaction.client.fetch_channel(THREAD_CHANNEL_ID)
+        # Thread or create
+        forum_channel = interaction.client.get_channel(THREAD_CHANNEL_ID) or \
+                        await interaction.client.fetch_channel(THREAD_CHANNEL_ID)
 
         thread = discord.utils.get(forum_channel.threads, name=self.username)
         if thread:
@@ -184,7 +213,7 @@ class PunishmentAvoidSelect(discord.ui.Select):
                 name=self.username,
                 content=message,
                 auto_archive_duration=60,
-                reason="Punishment issued",
+                reason="Punishment re-issued",
                 allowed_mentions=discord.AllowedMentions.none()
             )
             thread_link = thread.thread.id
@@ -195,20 +224,20 @@ class PunishmentAvoidSelect(discord.ui.Select):
         try:
             admin_chan = await interaction.client.fetch_channel(ADMIN_BOT_CHANNEL_ID)
             await admin_chan.send(
-                f"$admin banip {self.ip} \"{self.username}\" \"{reason_list} [AVOID]\" {final_duration}"
+                f"$admin banip {self.ip} \"{self.username}\" \"{reason_string} [AVOID]\" {final_duration}"
             )
         except Exception as e:
             print("❌ Failed to send admin avoid command:", e)
 
-        # Respond to moderator
+        # Respond to mod
         await interaction.response.send_message(
             f"""```ansi
-[2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
-```\n"""
-            f"**[View punishment thread]({link})**"
+    [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_display}[0m[2;34m[0m due to [2;34m[1;34m{reason_string} [AVOID][0m[2;34m[0m
+    ```\n"""
+            f"**[View punishment thread]({link})**",
+            ephemeral=True
         )
 
-        # Disable dropdown
         self.disabled = True
         await self.view.message.edit(view=self.view)
 
