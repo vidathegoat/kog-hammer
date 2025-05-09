@@ -11,13 +11,16 @@ from db import (
     get_catalog_punishment,
     fetch_user_infractions,
     calculate_total_decayed_points,
-    log_infraction
+    log_infraction,
+    get_latest_punishment
 )
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 1.1.6"
+
+VERSION = "Version 1.2.1"
+
 # ======================================================================================================================
 
 
@@ -227,6 +230,57 @@ async def banip_error(interaction: discord.Interaction, error: AppCommandError):
     else:
         # re‑raise or log other kinds of errors
         raise error
+
+
+@bot.tree.command(name="avoid", description="Reapply a previous punishment exactly, without escalation.")
+@app_commands.describe(username="Username of the user to re-ban", reason="Reason to reapply")
+@in_mod_channel()
+async def avoid(interaction: discord.Interaction, username: str, reason: str):
+    try:
+        await interaction.response.defer(ephemeral=True)
+        print(f"[avoid] Interaction deferred for {username} / {reason}")
+    except discord.errors.InteractionResponded:
+        print(f"[avoid] Already responded: {username}")
+        return
+    except discord.errors.NotFound:
+        print(f"[avoid] Interaction expired or invalid: {username}")
+        return
+
+    prev = get_latest_punishment(username, reason)
+    if not prev:
+        await interaction.followup.send(f"⚠️ No previous punishment found for `{reason}`.", ephemeral=True)
+        return
+
+    now = datetime.now(ZoneInfo("America/New_York"))
+    unit = prev.get("unit", "days")
+    base = prev["base_days"]
+    hours = base * {"minutes": 1/60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
+    end = now + timedelta(hours=hours)
+    unix = int(end.timestamp())
+
+    add_punishment(
+        username=username,
+        ip="0.0.0.0",  # Dummy or real IP depending on your needs
+        reason=reason,
+        amount=base,
+        points=0,
+        multiplier=prev["multiplier"],
+        total_points_at_ban=prev["total_points_at_ban"],
+        explicit_stage=prev["stage"]
+    )
+
+    # Send admin bot command
+    duration_string = f"{int(base)}{unit[0]}"
+    try:
+        admin_chan = await bot.fetch_channel(ADMIN_BOT_CHANNEL_ID)
+        await admin_chan.send(f"$admin banip 0.0.0.0 \"{username}\" \"{reason} [AVOID]\" {duration_string}")
+    except Exception as e:
+        print("❌ Failed to send admin avoid command:", e)
+
+    await interaction.followup.send(
+        f"✅ `{username}` was re-banned for `{base} {unit}` with reason `{reason}`\n<t:{unix}:F>\n(No stage increase, no points added)",
+        ephemeral=True
+    )
 
 
 bot.run(DISCORD_TOKEN)
