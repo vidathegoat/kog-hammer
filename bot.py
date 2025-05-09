@@ -2,6 +2,7 @@ import discord
 from math import log2
 from discord.ext import commands
 from discord import app_commands
+from discord.app_commands import CheckFailure, AppCommandError
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from db import (
@@ -12,7 +13,8 @@ from db import (
     fetch_user_infractions,
     calculate_total_decayed_points,
     log_infraction,
-    get_latest_punishment
+    get_latest_punishment,
+    get_previous_reasons_for_user
 )
 from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD_ID
 
@@ -30,6 +32,7 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+
 @bot.event
 async def on_ready():
     await bot.change_presence(activity=discord.Game(name=f"on {VERSION}"))
@@ -41,6 +44,7 @@ async def on_ready():
         print(f"⚔️🔁  Synced: {len(synced)} slash command ready for battle!")
     except Exception as e:
         print(f"⚠️  **Error** syncing commands: {e}")
+
 
 class PunishmentSelect(discord.ui.Select):
     def __init__(self, punishments, username, ip):
@@ -73,10 +77,86 @@ class PunishmentSelect(discord.ui.Select):
         await interaction.response.defer(ephemeral=True)
         await process_ban(interaction, self.values, self.username, self.ip)
 
+
 class PunishmentSelectView(discord.ui.View):
     def __init__(self, punishments, username, ip):
         super().__init__(timeout=None)
         self.add_item(PunishmentSelect(punishments, username, ip))
+
+
+class PunishmentAvoidSelect(discord.ui.Select):
+    def __init__(self, reasons, username, ip):
+        options = [
+            discord.SelectOption(label=reason[:90], value=reason)
+            for reason in reasons
+        ]
+        super().__init__(
+            placeholder="Select a reason to reapply",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.username = username
+        self.ip = ip
+
+    async def callback(self, interaction: discord.Interaction):
+        reason = self.values[0]
+        prev = get_latest_punishment(self.username, reason)
+
+        if not prev:
+            await interaction.response.send_message(
+                f"⚠️ No previous punishment found for `{reason}`.", ephemeral=True
+            )
+            return
+
+        now = datetime.now(ZoneInfo("America/New_York"))
+        unit = prev.get("unit", "days")
+        base = prev["base_days"]
+        hours = base * {"minutes": 1/60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
+        end = now + timedelta(hours=hours)
+        unix = int(end.timestamp())
+
+        add_punishment(
+            self.username,
+            self.ip,
+            reason,
+            base,
+            0,
+            prev["multiplier"],
+            prev["total_points_at_ban"],
+            explicit_stage=prev["stage"]
+        )
+
+        duration_string = f"{int(base)}{unit[0]}"
+        try:
+            admin_chan = await interaction.client.fetch_channel(ADMIN_BOT_CHANNEL_ID)
+            await admin_chan.send(
+                f"$admin banip {self.ip} \"{self.username}\" \"{reason} [AVOID]\" {duration_string}"
+            )
+        except Exception as e:
+            print("❌ Failed to send admin avoid command:", e)
+
+        await interaction.response.send_message(
+            f"✅ `{self.username}` was re-banned for `{base} {unit}` with reason `{reason}`\n"
+            f"<t:{unix}:F>\n(No stage increase, no points added)",
+            ephemeral=True
+        )
+
+        self.view.clear_items()
+        await interaction.edit_original_response(view=self.view)
+
+class PunishmentAvoidView(discord.ui.View):
+    def __init__(self, reasons, username, ip):
+        super().__init__(timeout=None)
+        self.add_item(PunishmentAvoidSelect(reasons, username, ip))
+
+
+
+class PunishmentAvoidView(discord.ui.View):
+    def __init__(self, reasons, username, ip):
+        super().__init__(timeout=None)
+        self.add_item(PunishmentAvoidSelect(reasons, username, ip))
+
 
 async def process_ban(interaction, reasons, username, ip):
     total_amount = 0
@@ -95,7 +175,7 @@ async def process_ban(interaction, reasons, username, ip):
 
     now = datetime.now(ZoneInfo("America/New_York"))
     infractions = fetch_user_infractions(username)
-    decayed_points = calculate_total_decayed_points(infractions, now, test_mode=True)
+    decayed_points = calculate_total_decayed_points(infractions, now, test_mode=False)
 
     multiplier = max(log2(decayed_points + 1), 1)
 
@@ -218,7 +298,6 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
-from discord.app_commands import CheckFailure, AppCommandError
 
 @banip.error
 async def banip_error(interaction: discord.Interaction, error: AppCommandError):
@@ -234,55 +313,40 @@ async def banip_error(interaction: discord.Interaction, error: AppCommandError):
         raise error
 
 
-@bot.tree.command(name="avoid", description="Reapply a previous punishment exactly, without escalation.")
-@app_commands.describe(username="Username of the user to re-ban", reason="Reason to reapply")
+@bot.tree.command(name="avoid", description="Re-ban a user who is avoiding ban.")
+@app_commands.describe(username="Username of the user to ban", ip="IPv4 address of the user")
 @in_mod_channel()
-async def avoid(interaction: discord.Interaction, username: str, reason: str):
+async def avoid(interaction: discord.Interaction, username: str, ip: str):
     try:
         await interaction.response.defer(ephemeral=True)
-        print(f"[avoid] Interaction deferred for {username} / {reason}")
+        print(f"[avoid] Interaction deferred successfully for {username} @ {ip}")
     except discord.errors.InteractionResponded:
-        print(f"[avoid] Already responded: {username}")
+        print(f"[avoid] ⚠️ Interaction already responded to for {username} @ {ip}")
         return
     except discord.errors.NotFound:
-        print(f"[avoid] Interaction expired or invalid: {username}")
+        print(f"[avoid] ⚠️ Interaction expired or unknown for {username} @ {ip}")
         return
 
-    prev = get_latest_punishment(username, reason)
-    if not prev:
-        await interaction.followup.send(f"⚠️ No previous punishment found for `{reason}`.", ephemeral=True)
-        return
+    punishment_options = get_all_punishment_options()
+    print(f"[avoid] Fetched punishment options: {len(punishment_options)} found")
 
-    now = datetime.now(ZoneInfo("America/New_York"))
-    unit = prev.get("unit", "days")
-    base = prev["base_days"]
-    hours = base * {"minutes": 1/60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
-    end = now + timedelta(hours=hours)
-    unix = int(end.timestamp())
+    if punishment_options:
+        view = PunishmentSelectView(punishment_options, username, ip)
+        await interaction.followup.send(content="", view=view, ephemeral=True)
+    else:
+        await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
-    add_punishment(
-        username=username,
-        ip="0.0.0.0",  # Dummy or real IP depending on your needs
-        reason=reason,
-        amount=base,
-        points=0,
-        multiplier=prev["multiplier"],
-        total_points_at_ban=prev["total_points_at_ban"],
-        explicit_stage=prev["stage"]
-    )
-
-    # Send admin bot command
-    duration_string = f"{int(base)}{unit[0]}"
-    try:
-        admin_chan = await bot.fetch_channel(ADMIN_BOT_CHANNEL_ID)
-        await admin_chan.send(f"$admin banip 0.0.0.0 \"{username}\" \"{reason} [AVOID]\" {duration_string}")
-    except Exception as e:
-        print("❌ Failed to send admin avoid command:", e)
-
-    await interaction.followup.send(
-        f"✅ `{username}` was re-banned for `{base} {unit}` with reason `{reason}`\n<t:{unix}:F>\n(No stage increase, no points added)",
-        ephemeral=True
-    )
-
+@avoid.error
+async def avoid_error(interaction: discord.Interaction, error: AppCommandError):
+    """Runs only if avoid raised an exception *before* it replied."""
+    if isinstance(error, CheckFailure):
+        # the channel gate failed
+        await interaction.response.send_message(
+            "❌ This command can only be used in <#{}>.".format(ADMIN_BOT_CHANNEL_ID),
+            ephemeral=True
+        )
+    else:
+        # re‑raise or log other kinds of errors
+        raise error
 
 bot.run(DISCORD_TOKEN)

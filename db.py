@@ -4,33 +4,30 @@ from dateutil import parser
 
 supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def add_punishment(user_id, ip, reason,
-                   base_days, points, multiplier, total_pts_at_ban,
-                   *, explicit_stage: int | None = None):
-
+def add_punishment(user_id, ip, reason, base_days, points, multiplier, total_pts_at_ban, *, explicit_stage: int | None = None):
     stage = (explicit_stage
              if explicit_stage is not None
              else get_user_stage(user_id, reason))
 
     data = {
-        "user_id": user_id,
-        "ip": ip,
-        "reason": reason,
-        "base_days": base_days,
-        "points": points,
-        "multiplier": multiplier,
-        "final_duration": int(base_days * multiplier),
-        "stage": stage,
-        "total_points_at_ban": total_pts_at_ban,
+        'user_id': user_id,
+        'ip': ip,
+        'reason': reason,
+        'base_days': base_days,
+        'points': points,
+        'multiplier': multiplier,
+        'final_duration': int(base_days * multiplier),
+        'stage': stage,
+        'total_points_at_ban': total_pts_at_ban,
     }
-    supabase_client.from_("punishments").insert(data).execute()
+    supabase_client.from_('punishments').insert(data).execute()
 
-def log_infraction(user_id, points, context, source="automated"):
+def log_infraction(user_id, points, context, source='automated'):
     data = {
-        "user_id": user_id,
-        "points": float(points),
-        "context": context,
-        "source": source
+        'user_id': user_id,
+        'points': float(points),
+        'context': context,
+        'source': source
     }
     supabase_client.from_('infractions').insert(data).execute()
 
@@ -48,8 +45,8 @@ def get_user_stage(user_id, reason):
         return 1
 
 def get_user_points(user_id):
-    result = supabase_client.from_('infractions').select("points").eq("user_id", user_id).execute()
-    return sum(entry["points"] for entry in result.data) if result.data else 0
+    result = supabase_client.from_('infractions').select('points').eq('user_id', user_id).execute()
+    return sum(entry['points'] for entry in result.data) if result.data else 0
 
 
 def fetch_user_infractions(user_id):
@@ -59,8 +56,8 @@ def fetch_user_infractions(user_id):
 
     return [
         {
-            "points": entry["points"],
-            "timestamp": parser.isoparse(entry["timestamp"])
+            'points': entry['points'],
+            'timestamp': parser.isoparse(entry['timestamp'])
         }
         for entry in response.data
     ]
@@ -78,7 +75,7 @@ def calculate_total_decayed_points(infractions, current_time, test_mode=False):
     return round(total, 2)
 
 def get_all_punishment_options():
-    result = supabase_client.from_('catalog').select("*").order("stage", desc=False).execute()
+    result = supabase_client.from_('catalog').select('*').order('stage', desc=False).execute()
     return result.data
 
 def get_catalog_punishment(reason, stage):
@@ -107,3 +104,8 @@ def get_latest_punishment(username, reason):
         .execute()
     )
     return result.data[0] if result.data else None
+
+def get_previous_reasons_for_user(username):
+    rows = supabase_client.from_('punishments').select('reason').eq('username', username).execute()
+    reasons = list({r['reason'] for r in rows.data})
+    return reasons
