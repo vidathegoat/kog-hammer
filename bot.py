@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.6"
+VERSION = "Version 1.2.7"
 
 # ======================================================================================================================
 
@@ -130,13 +130,18 @@ class PunishmentAvoidSelect(discord.ui.Select):
             )
             return
 
+        # Compute ban time
         now = datetime.now(ZoneInfo("America/New_York"))
         unit = prev.get("unit", "days")
         base = prev["base_days"]
-        hours = base * {"minutes": 1/60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
+        hours = base * {"minutes": 1 / 60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
         end = now + timedelta(hours=hours)
-        unix = int(end.timestamp())
+        unix_timestamp = int(end.timestamp())
+        final_duration = f"{int(base)}{unit[0]}"
+        final_duration_value = int(base)
+        final_duration_string = f"{final_duration_value} {unit}"
 
+        # Apply punishment
         add_punishment(
             self.username,
             self.ip,
@@ -148,23 +153,63 @@ class PunishmentAvoidSelect(discord.ui.Select):
             explicit_stage=prev["stage"]
         )
 
-        duration_string = f"{int(base)}{unit[0]}"
+        # Build thread text
+        moderator = interaction.user.mention
+        mod_name = interaction.user.display_name
+        reason_list = reason
+        message = (
+            f"**IP Address:** {self.ip}\n"
+            f"**Reasons:** {reason_list} [AVOID]\n\n"
+            f"**Base Duration:** {base} {unit}\n"
+            f"**Multiplier Applied:** x{prev['multiplier']:.2f}\n\n"
+            f"**Points Added:** 0  |  **Decayed Total:** {prev['total_points_at_ban']}\n\n"
+            f"**Final Duration:** `{final_duration_string}`\n"
+            f"**Ban Ends:** <t:{unix_timestamp}:F>\n\n"
+            f"**Issued By:** {moderator} ({mod_name})"
+        )
+
+        # Send to forum
+        forum_channel = interaction.client.get_channel(THREAD_CHANNEL_ID) \
+                        or await interaction.client.fetch_channel(THREAD_CHANNEL_ID)
+
+        thread = discord.utils.get(forum_channel.threads, name=self.username)
+        if thread:
+            await thread.send(message, silent=True)
+            thread_link = thread.id
+        else:
+            thread = await forum_channel.create_thread(
+                name=self.username,
+                content=message,
+                auto_archive_duration=60,
+                reason="Punishment issued",
+                allowed_mentions=discord.AllowedMentions.none()
+            )
+            thread_link = thread.thread.id
+
+        link = f"https://discord.com/channels/{interaction.guild_id}/{thread_link}"
+
+        # Admin bot command
         try:
             admin_chan = await interaction.client.fetch_channel(ADMIN_BOT_CHANNEL_ID)
             await admin_chan.send(
-                f"$admin banip {self.ip} \"{self.username}\" \"{reason} [AVOID]\" {duration_string}"
+                f"$admin banip {self.ip} \"{self.username}\" \"{reason_list} [AVOID]\" {final_duration}"
             )
         except Exception as e:
             print("❌ Failed to send admin avoid command:", e)
 
+        # Respond to moderator
         await interaction.response.send_message(
-            f"✅ `{self.username}` was re-banned for `{base} {unit}` with reason `{reason}`\n"
-            f"<t:{unix}:F>\n(No stage increase, no points added)",
+            f"""```ansi
+    [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_string}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
+    ```\n"""
+            f"**[View punishment thread]({link})**",
             ephemeral=True
         )
 
+        # Disable dropdown
         self.view.clear_items()
         await interaction.edit_original_response(view=self.view)
+
 
 class PunishmentAvoidView(discord.ui.View):
     def __init__(self, reasons, username, ip):
