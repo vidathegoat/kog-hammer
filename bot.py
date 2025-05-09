@@ -2,7 +2,6 @@ import discord
 from math import log2
 from discord.ext import commands
 from discord import app_commands
-from discord.app_commands import CheckFailure
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from db import (
@@ -18,7 +17,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
-VERSION = "Version 1.1.5"
+VERSION = "Version 1.1.6"
 # ======================================================================================================================
 
 
