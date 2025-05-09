@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.12"
+VERSION = "Version 1.2.13"
 
 # ======================================================================================================================
 
@@ -204,7 +204,7 @@ class PunishmentAvoidSelect(discord.ui.Select):
         await interaction.response.send_message(
             f"""```ansi
 [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
-```"""
+```\n"""
             f"**[View punishment thread]({link})**"
         )
 
