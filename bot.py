@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.5"
+VERSION = "Version 1.2.6"
 
 # ======================================================================================================================
 
@@ -77,6 +77,14 @@ class PunishmentSelect(discord.ui.Select):
         await interaction.response.defer(ephemeral=True)
         await process_ban(interaction, self.values, self.username, self.ip)
 
+        for child in self.view.children:       # disable every component
+            child.disabled = True
+
+        try:                                   # update the original message
+            await interaction.edit_original_response(view=self.view)
+        except discord.NotFound:               # message was deleted / timed‑out
+            pass
+
 
 class PunishmentSelectView(discord.ui.View):
     def __init__(self, punishments, username, ip):
@@ -85,11 +93,24 @@ class PunishmentSelectView(discord.ui.View):
 
 
 class PunishmentAvoidSelect(discord.ui.Select):
-    def __init__(self, reasons, username, ip):
-        options = [
-            discord.SelectOption(label=reason[:90], value=reason)
-            for reason in reasons
-        ]
+    def __init__(self, punishments, username, ip):
+        MAX_LENGTH = 100
+
+        options = []
+        seen_reasons = set()
+
+        for p in punishments:
+            reason = p["reason"]
+            if reason in seen_reasons:
+                continue
+            seen_reasons.add(reason)
+
+            label = reason[:90] + "..." if len(reason) > MAX_LENGTH else reason
+            value = reason[:MAX_LENGTH]
+
+            options.append(discord.SelectOption(label=label, value=value))
+
+
         super().__init__(
             placeholder="Select a reason to reapply",
             min_values=1,
