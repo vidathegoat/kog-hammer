@@ -231,11 +231,10 @@ class PunishmentAvoidSelect(discord.ui.Select):
 
         # Respond to mod
         await interaction.response.send_message(
-            f"""```ansi
-    [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_display}[0m[2;34m[0m due to [2;34m[1;34m{reason_string} [AVOID][0m[2;34m[0m
+        f"""```ansi
+[2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_display}[0m[2;34m[0m due to [2;34m[1;34m{reason_string} [AVOID][0m[2;34m[0m
     ```\n"""
-            f"**[View punishment thread]({link})**",
-            ephemeral=True
+            f"**[View punishment thread]({link})**"
         )
 
         self.disabled = True
