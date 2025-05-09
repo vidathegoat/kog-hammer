@@ -114,7 +114,7 @@ class PunishmentAvoidSelect(discord.ui.Select):
         super().__init__(
             placeholder="Select a reason to re-apply",
             min_values=1,
-            max_values=1,
+            max_values=len(options),
             options=options
         )
         self.username = username
