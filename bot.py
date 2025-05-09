@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.3"
+VERSION = "Version 1.2.5"
 
 # ======================================================================================================================
 
@@ -331,7 +331,7 @@ async def avoid(interaction: discord.Interaction, username: str, ip: str):
     print(f"[avoid] Fetched punishment options: {len(punishment_options)} found")
 
     if punishment_options:
-        view = PunishmentSelectView(punishment_options, username, ip)
+        view = PunishmentAvoidView(punishment_options, username, ip)
         await interaction.followup.send(content="", view=view, ephemeral=True)
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
