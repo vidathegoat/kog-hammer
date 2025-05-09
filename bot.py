@@ -19,7 +19,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.2"
+VERSION = "Version 1.2.3"
 
 # ======================================================================================================================
 
@@ -36,7 +36,8 @@ async def on_ready():
     print(f"🔨🗡️  {bot.user} is now online and watching over the realm! [{VERSION}]")
     try:
         guild = discord.Object(id=GUILD_ID)
-        synced = await bot.tree.sync(guild=guild)
+        print(guild)
+        synced = await bot.tree.sync()
         print(f"⚔️🔁  Synced: {len(synced)} slash command ready for battle!")
     except Exception as e:
         print(f"⚠️  **Error** syncing commands: {e}")
