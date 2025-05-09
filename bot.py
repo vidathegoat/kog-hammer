@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.7"
+VERSION = "Version 1.2.8"
 
 # ======================================================================================================================
 
@@ -133,7 +133,7 @@ class PunishmentAvoidSelect(discord.ui.Select):
         # Compute ban time
         now = datetime.now(ZoneInfo("America/New_York"))
         unit = prev.get("unit", "days")
-        base = prev["base_days"]
+        base = prev["amount"]
         hours = base * {"minutes": 1 / 60, "hours": 1, "days": 24, "weeks": 168}.get(unit, 24)
         end = now + timedelta(hours=hours)
         unix_timestamp = int(end.timestamp())
@@ -200,10 +200,10 @@ class PunishmentAvoidSelect(discord.ui.Select):
         # Respond to moderator
         await interaction.response.send_message(
             f"""```ansi
-    [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_string}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
-    ```\n"""
-            f"**[View punishment thread]({link})**",
-            ephemeral=True
+        [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
+        ```
+        """
+            f"**[View punishment thread]({link})**"
         )
 
         # Disable dropdown
