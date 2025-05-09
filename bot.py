@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.9"
+VERSION = "Version 1.2.10"
 
 # ======================================================================================================================
 
@@ -201,11 +201,11 @@ class PunishmentAvoidSelect(discord.ui.Select):
             print("❌ Failed to send admin avoid command:", e)
 
         # Respond to moderator
-        await interaction.response.send_message(
+        await interaction.response.send(
             f"""```ansi
-        [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
-        ```
-        """
+    [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
+    ```
+    """
             f"**[View punishment thread]({link})**"
         )
 
