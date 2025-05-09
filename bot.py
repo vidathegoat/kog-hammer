@@ -19,9 +19,13 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
 
 
 # ======================================================================================================================
+<<<<<<< HEAD
 
 VERSION = "Version 1.2.10"
 
+=======
+VERSION = "Version 1.1.5"
+>>>>>>> parent of 49eaab3 (Revert "1.1.5 - alter output format | stable version")
 # ======================================================================================================================
 
 
@@ -319,7 +323,11 @@ async def banip(interaction: discord.Interaction, username: str, ip: str):
 async def banip_error(interaction: discord.Interaction, error: AppCommandError):
     if isinstance(error, CheckFailure):
         await interaction.response.send_message(
+<<<<<<< HEAD
             f"❌ This command can only be used in <#{ADMIN_BOT_CHANNEL_ID}>.",
+=======
+            "❌ This command can only be used in <#{}>.".format(ADMIN_BOT_CHANNEL_ID),
+>>>>>>> parent of 49eaab3 (Revert "1.1.5 - alter output format | stable version")
             ephemeral=True
         )
     else:
