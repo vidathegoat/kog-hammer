@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.10"
+VERSION = "Version 1.2.11"
 
 # ======================================================================================================================
 
@@ -112,7 +112,7 @@ class PunishmentAvoidSelect(discord.ui.Select):
 
 
         super().__init__(
-            placeholder="Select a reason to reapply",
+            placeholder="Select a reason to re-apply",
             min_values=1,
             max_values=1,
             options=options
@@ -201,7 +201,7 @@ class PunishmentAvoidSelect(discord.ui.Select):
             print("❌ Failed to send admin avoid command:", e)
 
         # Respond to moderator
-        await interaction.response.send(
+        await interaction.response.send_message(
             f"""```ansi
     [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
     ```
@@ -210,7 +210,7 @@ class PunishmentAvoidSelect(discord.ui.Select):
         )
 
         # Disable dropdown
-        self.view.clear_items()
+        self.disabled = True
         await interaction.edit_original_response(view=self.view)
 
 
