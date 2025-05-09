@@ -21,7 +21,7 @@ from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.11"
+VERSION = "Version 1.2.12"
 
 # ======================================================================================================================
 
@@ -203,15 +203,14 @@ class PunishmentAvoidSelect(discord.ui.Select):
         # Respond to moderator
         await interaction.response.send_message(
             f"""```ansi
-    [2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
-    ```
-    """
+[2;34m[1;34m{self.username}[0m[2;34m[0m has been re-banned for [2;34m[1;34m{final_duration_value} {unit}[0m[2;34m[0m due to [2;34m[1;34m{reason_list} [AVOID][0m[2;34m[0m
+```"""
             f"**[View punishment thread]({link})**"
         )
 
         # Disable dropdown
         self.disabled = True
-        await interaction.edit_original_response(view=self.view)
+        await self.view.message.edit(view=self.view)
 
 
 class PunishmentAvoidView(discord.ui.View):
@@ -401,7 +400,8 @@ async def avoid(interaction: discord.Interaction, username: str, ip: str):
 
     if punishment_options:
         view = PunishmentAvoidView(punishment_options, username, ip)
-        await interaction.followup.send(content="", view=view, ephemeral=True)
+        message = await interaction.followup.send(content="", view=view, ephemeral=True)
+        view.message = message
     else:
         await interaction.followup.send("No punishment templates found.", ephemeral=True)
 
