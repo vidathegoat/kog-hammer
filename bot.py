@@ -14,12 +14,12 @@ from db import (
     log_infraction,
     get_latest_punishment
 )
-from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID
+from config import DISCORD_TOKEN, THREAD_CHANNEL_ID, ADMIN_BOT_CHANNEL_ID, GUILD_ID
 
 
 # ======================================================================================================================
 
-VERSION = "Version 1.2.1"
+VERSION = "Version 1.2.2"
 
 # ======================================================================================================================
 
@@ -35,7 +35,8 @@ async def on_ready():
     await bot.change_presence(activity=discord.Game(name=f"on {VERSION}"))
     print(f"🔨🗡️  {bot.user} is now online and watching over the realm! [{VERSION}]")
     try:
-        synced = await bot.tree.sync()
+        guild = discord.Object(id=GUILD_ID)
+        synced = await bot.tree.sync(guild=guild)
         print(f"⚔️🔁  Synced: {len(synced)} slash command ready for battle!")
     except Exception as e:
         print(f"⚠️  **Error** syncing commands: {e}")
