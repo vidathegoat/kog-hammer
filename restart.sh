@@ -1,5 +1,5 @@
 #!/bin/bash
-cd ~/kog-hammer
+cd ~/kog-hammer/src
 source .venv/bin/activate
 pkill -f bot.py
 git pull origin main
