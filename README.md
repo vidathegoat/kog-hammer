@@ -18,6 +18,7 @@
 
 - 🐍 Python 3.11+  
 - 🔑 Discord bot token  
+- 🛠️ Discord channel & guild IDs
 - 🧾 Supabase project with public & service keys  
 
 ---
